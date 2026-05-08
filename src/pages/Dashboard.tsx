@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import PageIntro from '../components/PageIntro'
 import { getProposals, tallyVotes, type Proposal, type TallyResult } from '../lib/api'
-import { timeAgo, pct } from '../lib/format'
+import { pct } from '../lib/format'
 
 const STATUS_COLORS: Record<string, string> = {
   Voting: 'bg-blue-100 text-blue-800',
@@ -48,112 +47,107 @@ export default function Dashboard() {
   const closed = proposals.filter((p) => p.status !== 'Voting')
 
   return (
-    <div className="space-y-8">
-      <PageIntro title="Panel de Votacion">
-        Resumen de elecciones activas y finalizadas en la red Cerulean Ledger.
-      </PageIntro>
-
+    <div className="h-full flex flex-col min-h-0">
       {/* Stats cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard label="Elecciones activas" value={active.length} color="text-blue-600" />
-        <StatCard label="Elecciones cerradas" value={closed.length} color="text-neutral-600" />
-        <StatCard label="Total votaciones" value={proposals.length} color="text-main-600" />
+      <div className="grid grid-cols-3 gap-3 mb-3 shrink-0">
+        <StatCard label="Activas" value={active.length} color="text-blue-600" />
+        <StatCard label="Cerradas" value={closed.length} color="text-neutral-600" />
+        <StatCard label="Total" value={proposals.length} color="text-main-600" />
       </div>
 
-      {/* Active elections */}
-      <section className="bg-white rounded-lg border shadow-sm p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg font-semibold">Elecciones Activas</h2>
-          <button onClick={() => nav('/elections')} className="text-sm text-main-600 hover:underline">
-            Crear nueva
-          </button>
-        </div>
+      {/* Scrollable content area */}
+      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Active elections */}
+        <section className="bg-white rounded-lg border border-neutral-100 flex flex-col min-h-0">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-neutral-100 shrink-0">
+            <h2 className="text-sm font-semibold text-neutral-700">Elecciones Activas</h2>
+            <button onClick={() => nav('/elections')} className="text-xs text-main-600 hover:underline">
+              Crear nueva
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-3">
+            {loading ? (
+              <p className="text-sm text-neutral-400">Cargando...</p>
+            ) : active.length === 0 ? (
+              <p className="text-sm text-neutral-400">No hay elecciones activas.</p>
+            ) : (
+              active.map((p) => {
+                const tally = tallies[p.id]
+                return (
+                  <div
+                    key={p.id}
+                    className="border border-neutral-100 rounded-lg p-2.5 hover:bg-neutral-50 cursor-pointer transition-colors"
+                    onClick={() => nav('/vote')}
+                  >
+                    <div className="flex items-start justify-between mb-1.5">
+                      <div>
+                        <span className="font-semibold text-sm">#{p.id} — {p.description || 'Sin titulo'}</span>
+                        <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[p.status] || 'bg-gray-100'}`}>
+                          {STATUS_LABELS[p.status] || p.status}
+                        </span>
+                      </div>
+                      <span className="text-xs text-neutral-400 shrink-0">Bloque #{p.submitted_at}</span>
+                    </div>
+                    {tally && tally.total_voted_power > 0 && (
+                      <div>
+                        <div className="flex gap-0.5 h-2 rounded overflow-hidden mb-1">
+                          {tally.yes_power > 0 && <div className="bg-green-500" style={{ width: pct(tally.yes_power, tally.total_voted_power) }} />}
+                          {tally.no_power > 0 && <div className="bg-red-500" style={{ width: pct(tally.no_power, tally.total_voted_power) }} />}
+                          {tally.abstain_power > 0 && <div className="bg-neutral-300" style={{ width: pct(tally.abstain_power, tally.total_voted_power) }} />}
+                        </div>
+                        <div className="flex text-xs gap-3 text-neutral-500">
+                          <span className="text-green-700">Si: {tally.yes_power.toLocaleString()}</span>
+                          <span className="text-red-700">No: {tally.no_power.toLocaleString()}</span>
+                          <span>Abs: {tally.abstain_power.toLocaleString()}</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )
+              })
+            )}
+          </div>
+        </section>
 
-        {loading ? (
-          <p className="text-sm text-neutral-400">Cargando...</p>
-        ) : active.length === 0 ? (
-          <p className="text-sm text-neutral-400">No hay elecciones activas en este momento.</p>
-        ) : (
-          <div className="space-y-3">
-            {active.map((p) => {
-              const tally = tallies[p.id]
-              return (
-                <div
-                  key={p.id}
-                  className="border rounded-lg p-4 hover:bg-neutral-50 cursor-pointer transition-colors"
-                  onClick={() => nav('/vote')}
-                >
-                  <div className="flex items-start justify-between mb-2">
-                    <div>
-                      <span className="font-semibold text-sm">#{p.id} — {p.description || 'Sin titulo'}</span>
-                      <span className={`ml-2 text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[p.status] || 'bg-gray-100'}`}>
+        {/* Closed elections */}
+        <section className="bg-white rounded-lg border border-neutral-100 flex flex-col min-h-0">
+          <div className="px-3 py-2 border-b border-neutral-100 shrink-0">
+            <h2 className="text-sm font-semibold text-neutral-700">Finalizadas</h2>
+          </div>
+          <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            {closed.length === 0 ? (
+              <p className="text-sm text-neutral-400">No hay elecciones finalizadas.</p>
+            ) : (
+              closed.map((p) => {
+                const tally = tallies[p.id]
+                return (
+                  <div key={p.id} className="flex items-center justify-between border-b last:border-0 pb-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-sm font-medium shrink-0">#{p.id}</span>
+                      <span className="text-sm text-neutral-600 truncate">{p.description || 'Sin titulo'}</span>
+                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_COLORS[p.status] || 'bg-gray-100'}`}>
                         {STATUS_LABELS[p.status] || p.status}
                       </span>
                     </div>
-                    <span className="text-xs text-neutral-400">{timeAgo(p.created_at)}</span>
-                  </div>
-
-                  {tally && tally.total_voted_power > 0 && (
-                    <div>
-                      <div className="flex gap-0.5 h-2.5 rounded overflow-hidden mb-1">
-                        {tally.yes_power > 0 && (
-                          <div className="bg-green-500" style={{ width: pct(tally.yes_power, tally.total_voted_power) }} />
-                        )}
-                        {tally.no_power > 0 && (
-                          <div className="bg-red-500" style={{ width: pct(tally.no_power, tally.total_voted_power) }} />
-                        )}
-                        {tally.abstain_power > 0 && (
-                          <div className="bg-neutral-300" style={{ width: pct(tally.abstain_power, tally.total_voted_power) }} />
-                        )}
-                      </div>
-                      <div className="flex text-xs gap-3 text-neutral-500">
-                        <span className="text-green-700">Si: {tally.yes_power.toLocaleString()}</span>
-                        <span className="text-red-700">No: {tally.no_power.toLocaleString()}</span>
-                        <span>Abstencion: {tally.abstain_power.toLocaleString()}</span>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        )}
-      </section>
-
-      {/* Recent closed */}
-      {closed.length > 0 && (
-        <section className="bg-white rounded-lg border shadow-sm p-6">
-          <h2 className="text-lg font-semibold mb-4">Finalizadas Recientemente</h2>
-          <div className="space-y-2">
-            {closed.slice(0, 5).map((p) => {
-              const tally = tallies[p.id]
-              return (
-                <div key={p.id} className="flex items-center justify-between border-b last:border-0 pb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">#{p.id}</span>
-                    <span className="text-sm text-neutral-600">{p.description || 'Sin titulo'}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[p.status] || 'bg-gray-100'}`}>
-                      {STATUS_LABELS[p.status] || p.status}
+                    <span className="text-xs text-neutral-400 shrink-0 ml-2">
+                      {tally ? `${tally.total_voted_power.toLocaleString()} votos` : ''}
                     </span>
                   </div>
-                  <span className="text-xs text-neutral-400">
-                    {tally ? `${tally.total_voted_power.toLocaleString()} votos` : ''}
-                  </span>
-                </div>
-              )
-            })}
+                )
+              })
+            )}
           </div>
         </section>
-      )}
+      </div>
     </div>
   )
 }
 
 function StatCard({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div className="bg-white rounded-lg border shadow-sm p-5">
-      <p className="text-xs text-neutral-400 font-medium uppercase tracking-wide mb-1">{label}</p>
-      <p className={`text-3xl font-bold ${color}`}>{value}</p>
+    <div className="bg-white rounded-lg border border-neutral-100 px-3 py-2">
+      <p className="text-[10px] text-neutral-400 uppercase tracking-wide">{label}</p>
+      <p className={`text-lg font-bold ${color}`}>{value}</p>
     </div>
   )
 }

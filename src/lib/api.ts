@@ -66,8 +66,8 @@ export interface Proposal {
   status: string;
   deposit: number;
   action: unknown;
-  created_at: number;
-  voting_end: number;
+  submitted_at: number;
+  voting_ends_at: number;
 }
 
 export interface TallyResult {
@@ -110,11 +110,13 @@ export async function submitProposal(body: {
   return unwrap<Proposal>(data);
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function castVote(
   proposalId: number,
   body: { voter: string; option: 'Yes' | 'No' | 'Abstain'; power: number },
-): Promise<void> {
-  await client.post(`/governance/proposals/${proposalId}/vote`, body);
+): Promise<any> {
+  const { data } = await client.post(`/governance/proposals/${proposalId}/vote`, body);
+  return data;
 }
 
 export async function tallyVotes(proposalId: number): Promise<TallyResult> {

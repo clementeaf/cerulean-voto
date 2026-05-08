@@ -13,7 +13,7 @@ export default function Layout(): ReactElement {
   )
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="h-screen flex flex-col overflow-hidden">
       {/* Top bar */}
       <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-xl border-b border-neutral-200">
         <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
@@ -50,7 +50,7 @@ export default function Layout(): ReactElement {
         </div>
       </header>
 
-      <div className="flex flex-1 max-w-screen-2xl mx-auto w-full">
+      <div className="flex flex-1 min-h-0 max-w-screen-2xl mx-auto w-full">
         {/* Sidebar */}
         <aside
           className={`
@@ -102,16 +102,16 @@ export default function Layout(): ReactElement {
         )}
 
         {/* Main content */}
-        <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-8">
+        <main className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
           <Outlet />
         </main>
       </div>
 
-      {/* Footer */}
-      <footer className="border-t border-neutral-200 py-4">
-        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 flex items-center justify-between text-xs text-neutral-400">
+      {/* Footer — minimal */}
+      <footer className="border-t border-neutral-200 py-2 shrink-0">
+        <div className="max-w-screen-2xl mx-auto px-4 sm:px-6 flex items-center justify-between text-[11px] text-neutral-400">
           <span>Cerulean Voto</span>
-          <span>Voto electronico verificable sobre DLT post-cuantica</span>
+          <span>DLT post-cuantica</span>
         </div>
       </footer>
     </div>
