@@ -65,15 +65,17 @@ export default function Vote() {
     if (!voterName.trim()) { setErr('Ingresa tu nombre'); return }
     try {
       const res = await castVote(proposalId, { voter: voterDid, option, power: 1 })
-      const t = await tallyVotes(proposalId)
-      setTallies((prev) => ({ ...prev, [proposalId]: t }))
+      const tally = res?.data
+      if (tally) {
+        setTallies((prev) => ({ ...prev, [proposalId]: tally }))
+      }
 
       const proposal = proposals.find((p) => p.id === proposalId)
       setReceipt({
         proposalId,
         description: proposal?.description || `Eleccion #${proposalId}`,
         option: optionLabels[option],
-        blockHeight: res?.data?.[0]?.voted_at ?? 0,
+        blockHeight: tally?.total_voted_power ?? 0,
         traceId: res?.trace_id ?? '',
         timestamp: res?.timestamp ?? new Date().toISOString(),
       })
