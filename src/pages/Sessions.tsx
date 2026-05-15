@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
   getAssemblies,
@@ -12,6 +12,7 @@ import {
   type AgendaItem,
   type Assembly,
 } from '../lib/store'
+import { getProposals, type Proposal } from '../lib/api'
 
 const STATUS_COLORS: Record<string, string> = {
   planificada: 'bg-neutral-100 text-neutral-600',
@@ -55,8 +56,14 @@ export default function Sessions() {
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([])
   const [newAgendaTitle, setNewAgendaTitle] = useState('')
   const [newAgendaType, setNewAgendaType] = useState<AgendaItem['type']>('informativo')
+  const [newAgendaProposalId, setNewAgendaProposalId] = useState<number | undefined>(undefined)
+  const [proposals, setProposals] = useState<Proposal[]>([])
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
+
+  useEffect(() => {
+    getProposals().then(setProposals).catch(() => {})
+  }, [])
 
   const nextNumber = useMemo(() => {
     const nums = sessions.map((s) => s.number)
@@ -69,8 +76,16 @@ export default function Sessions() {
 
   function addAgendaItem() {
     if (!newAgendaTitle.trim()) return
-    setAgendaItems([...agendaItems, { id: uid(), title: newAgendaTitle.trim(), type: newAgendaType, resolved: false, resolution: '' }])
+    setAgendaItems([...agendaItems, {
+      id: uid(),
+      title: newAgendaTitle.trim(),
+      type: newAgendaType,
+      proposal_id: newAgendaType === 'votacion' ? newAgendaProposalId : undefined,
+      resolved: false,
+      resolution: '',
+    }])
     setNewAgendaTitle('')
+    setNewAgendaProposalId(undefined)
   }
 
   function removeAgendaItem(id: string) {
@@ -343,6 +358,9 @@ export default function Sessions() {
                         <span className="text-xs font-mono text-neutral-400">{i + 1}.</span>
                         <span className="text-sm font-medium">{item.title}</span>
                         <span className="text-[10px] bg-neutral-100 px-1.5 py-0.5 rounded">{item.type}</span>
+                        {item.proposal_id != null && (
+                          <span className="text-[10px] bg-main-50 text-main-700 px-1.5 py-0.5 rounded">Eleccion #{item.proposal_id}</span>
+                        )}
                       </div>
                       {item.resolution && (
                         <p className="text-xs text-neutral-500 mt-1 ml-5">{item.resolution}</p>
@@ -460,6 +478,20 @@ export default function Sessions() {
                     +
                   </button>
                 </div>
+                {newAgendaType === 'votacion' && proposals.length > 0 && (
+                  <div className="mt-1.5">
+                    <select
+                      className="w-full rounded-lg border border-neutral-200 px-3 py-1.5 text-xs"
+                      value={newAgendaProposalId ?? ''}
+                      onChange={(e) => setNewAgendaProposalId(e.target.value ? Number(e.target.value) : undefined)}
+                    >
+                      <option value="">Vincular a eleccion (opcional)</option>
+                      {proposals.map((p) => (
+                        <option key={p.id} value={p.id}>#{p.id} — {p.description || '(sin descripcion)'}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
               </div>
 
               <div>

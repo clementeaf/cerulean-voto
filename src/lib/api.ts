@@ -13,50 +13,6 @@ function unwrap<T>(body: unknown): T {
   throw new Error(msg);
 }
 
-// -- Types ------------------------------------------------------------------
-
-export interface Election {
-  id: number;
-  title: string;
-  description: string;
-  creator: string;
-  status: 'Draft' | 'Open' | 'Closed' | 'Tallied';
-  options: string[];
-  eligible_voters: string[];
-  created_at: number;
-  opens_at: number;
-  closes_at: number;
-}
-
-export interface Vote {
-  election_id: number;
-  voter: string;
-  option_index: number;
-  timestamp: number;
-}
-
-export interface ElectionResult {
-  election_id: number;
-  title: string;
-  total_votes: number;
-  total_eligible: number;
-  participation: number;
-  results: OptionResult[];
-  quorum_reached: boolean;
-}
-
-export interface OptionResult {
-  option: string;
-  votes: number;
-  percentage: number;
-}
-
-export interface VoterCredential {
-  did: string;
-  name: string;
-  credential_id?: string;
-}
-
 // -- Governance API (existing backend) --------------------------------------
 
 export interface Proposal {
@@ -80,24 +36,9 @@ export interface TallyResult {
   passed: boolean;
 }
 
-export interface ProtocolParam {
-  key: string;
-  value: number;
-}
-
-export async function getGovernanceParams(): Promise<ProtocolParam[]> {
-  const { data } = await client.get('/governance/params');
-  return unwrap<ProtocolParam[]>(data);
-}
-
 export async function getProposals(): Promise<Proposal[]> {
   const { data } = await client.get('/governance/proposals');
   return unwrap<Proposal[]>(data);
-}
-
-export async function getProposal(id: number): Promise<Proposal> {
-  const { data } = await client.get(`/governance/proposals/${id}`);
-  return unwrap<Proposal>(data);
 }
 
 export async function submitProposal(body: {

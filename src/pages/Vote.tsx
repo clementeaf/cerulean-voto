@@ -7,6 +7,7 @@ import {
   type TallyResult,
 } from '../lib/api'
 import { pct } from '../lib/format'
+import { findVoterByName } from '../lib/store'
 
 interface VoteReceipt {
   proposalId: number
@@ -32,9 +33,10 @@ export default function Vote() {
   const [receipt, setReceipt] = useState<VoteReceipt | null>(null)
   const [visibleChecks, setVisibleChecks] = useState(0)
 
-  const voterDid = `did:cerulean:${voterName.trim().toLowerCase().replace(/\s+/g, '-') || 'anonimo'}`
+  const registeredVoter = voterName.trim() ? findVoterByName(voterName) : undefined
+  const voterDid = registeredVoter?.did || ''
   const optionLabels: Record<string, string> = { Yes: 'A favor', No: 'En contra', Abstain: 'Abstencion' }
-  const hasVoter = voterName.trim().length > 0
+  const hasVoter = !!registeredVoter
 
   useEffect(() => { load() }, [])
 
@@ -63,6 +65,7 @@ export default function Vote() {
     setErr('')
     setReceipt(null)
     if (!voterName.trim()) { setErr('Ingresa tu nombre'); return }
+    if (!registeredVoter) { setErr('Votante no registrado en el padron. Registrate primero en la seccion Padron.'); return }
     try {
       const res = await castVote(proposalId, { voter: voterDid, option, power: 1 })
       const tally = res?.data
@@ -106,7 +109,13 @@ export default function Vote() {
           onChange={(e) => setVoterName(e.target.value)}
           placeholder="Tu nombre"
         />
-        {!hasVoter && <span className="text-[10px] text-neutral-300 shrink-0">Ingresa tu nombre para votar</span>}
+        {voterName.trim() && !registeredVoter && (
+          <span className="text-[10px] text-red-400 shrink-0">No registrado en padron</span>
+        )}
+        {!voterName.trim() && <span className="text-[10px] text-neutral-300 shrink-0">Ingresa tu nombre para votar</span>}
+        {registeredVoter && (
+          <span className="text-[10px] text-green-600 shrink-0">Habilitado</span>
+        )}
       </div>
 
       {err && <p className="text-xs text-red-700 bg-red-50 rounded border border-red-100 p-2 mb-2 shrink-0">{err}</p>}

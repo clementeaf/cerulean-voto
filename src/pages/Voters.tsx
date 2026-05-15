@@ -1,14 +1,11 @@
 import { useState } from 'react'
 import { registerIdentity, getIdentity } from '../lib/api'
+import { getVoters, saveVoter, deleteVoter, type Voter } from '../lib/store'
 import { shortHash } from '../lib/format'
 
-interface VoterEntry {
-  did: string
-  name: string
-}
-
 export default function Voters() {
-  const [voters, setVoters] = useState<VoterEntry[]>([])
+  const [voters, setVoters] = useState<Voter[]>(getVoters)
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   const [name, setName] = useState('')
   const [rut, setRut] = useState('')
@@ -18,24 +15,37 @@ export default function Voters() {
   const [lookupDid, setLookupDid] = useState('')
   const [lookupResult, setLookupResult] = useState<string>('')
 
+  function reload() {
+    setVoters(getVoters())
+  }
+
   async function handleRegister() {
     setMsg('')
     setErr('')
     if (!name.trim()) { setErr('El nombre es obligatorio'); return }
-    const did = `did:cerulean:${name.trim().toLowerCase().replace(/\s+/g, '-')}-${Date.now()}`
+    const did = `did:cerulean:${name.trim().toLowerCase().replace(/\s+/g, '-')}`
     try {
+      // Register on blockchain
       await registerIdentity({
         did,
         public_key: 'auto-' + Date.now(),
-        metadata: rut ? { voter_name: name, rut } : { voter_name: name },
+        metadata: rut ? { voter_name: name.trim(), rut } : { voter_name: name.trim() },
       })
-      setVoters((prev) => [...prev, { did, name }])
-      setMsg(`${name} registrado`)
+      // Persist locally
+      saveVoter({ did, name: name.trim(), rut: rut.trim() })
+      setMsg(`${name.trim()} registrado`)
       setName('')
       setRut('')
+      reload()
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error al registrar')
     }
+  }
+
+  function handleDelete(did: string) {
+    deleteVoter(did)
+    setConfirmDelete(null)
+    reload()
   }
 
   async function handleLookup() {
@@ -119,25 +129,40 @@ export default function Voters() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {voters.length === 0 ? (
-            <p className="text-sm text-neutral-300 p-3">Sin votantes registrados en esta sesion.</p>
+            <p className="text-sm text-neutral-300 p-3">Sin votantes registrados.</p>
           ) : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-white">
                 <tr className="border-b border-neutral-100 text-left text-neutral-400 text-xs">
                   <th className="py-1.5 px-3">Nombre</th>
+                  <th className="py-1.5 px-3">RUT</th>
                   <th className="py-1.5 px-3">ID</th>
                   <th className="py-1.5 px-3">Estado</th>
+                  <th className="py-1.5 px-3"></th>
                 </tr>
               </thead>
               <tbody>
                 {voters.map((v) => (
                   <tr key={v.did} className="border-b border-neutral-50 last:border-0">
                     <td className="py-1.5 px-3 text-sm">{v.name}</td>
+                    <td className="py-1.5 px-3 text-sm text-neutral-500">{v.rut || '--'}</td>
                     <td className="py-1.5 px-3 font-mono text-xs text-neutral-400">{shortHash(v.did)}</td>
                     <td className="py-1.5 px-3">
                       <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">
                         Registrado
                       </span>
+                    </td>
+                    <td className="py-1.5 px-3">
+                      {confirmDelete === v.did ? (
+                        <div className="flex items-center gap-1">
+                          <button onClick={() => handleDelete(v.did)} className="text-xs text-red-600 font-semibold">Si</button>
+                          <button onClick={() => setConfirmDelete(null)} className="text-xs text-neutral-400">No</button>
+                        </div>
+                      ) : (
+                        <button onClick={() => setConfirmDelete(v.did)} className="text-xs text-neutral-400 hover:text-red-500">
+                          Eliminar
+                        </button>
+                      )}
                     </td>
                   </tr>
                 ))}
