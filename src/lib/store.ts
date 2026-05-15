@@ -247,34 +247,4 @@ export function saveOrgSettings(s: OrgSettings): void {
   write('org_settings', s)
 }
 
-// -- Voters (padron electoral) ------------------------------------------------
-
-export interface Voter {
-  did: string
-  name: string
-  rut: string
-  registered_at: number // unix ms
-}
-
-export function getVoters(): Voter[] {
-  return read<Voter[]>('voters', [])
-}
-
-export function findVoterByName(name: string): Voter | undefined {
-  const normalized = name.trim().toLowerCase()
-  return getVoters().find((v) => v.name.toLowerCase() === normalized)
-}
-
-export function saveVoter(v: Omit<Voter, 'registered_at'>): Voter {
-  const list = getVoters()
-  if (list.some((existing) => existing.did === v.did)) {
-    throw new Error('Este votante ya esta registrado')
-  }
-  const item: Voter = { ...v, registered_at: Date.now() }
-  write('voters', [...list, item])
-  return item
-}
-
-export function deleteVoter(did: string): void {
-  write('voters', getVoters().filter((v) => v.did !== did))
-}
+// Voters moved to wallet.ts — real Ed25519 wallets via WASM

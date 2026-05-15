@@ -54,7 +54,13 @@ export async function submitProposal(body: {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function castVote(
   proposalId: number,
-  body: { voter: string; option: 'Yes' | 'No' | 'Abstain'; power: number },
+  body: {
+    voter: string;
+    option: 'Yes' | 'No' | 'Abstain';
+    power: number;
+    signature?: string;
+    public_key?: string;
+  },
 ): Promise<any> {
   const { data } = await client.post(`/governance/proposals/${proposalId}/vote`, body);
   return data;

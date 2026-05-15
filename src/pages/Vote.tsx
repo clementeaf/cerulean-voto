@@ -7,7 +7,13 @@ import {
   type TallyResult,
 } from '../lib/api'
 import { pct } from '../lib/format'
-import { findVoterByName } from '../lib/store'
+import {
+  getStoredWallets,
+  findWalletByName,
+  didFromWallet,
+  signVote,
+  type StoredWallet,
+} from '../lib/wallet'
 
 interface VoteReceipt {
   proposalId: number
@@ -16,27 +22,30 @@ interface VoteReceipt {
   blockHeight: number
   traceId: string
   timestamp: string
+  signature: string
 }
 
 const GUARANTEES = [
-  { label: 'Voto firmado', detail: 'Nadie puede falsificar tu voto' },
+  { label: 'Voto firmado con Ed25519', detail: 'Firmado con tu clave privada — nadie puede falsificarlo' },
   { label: 'Registrado en blockchain', detail: 'Nadie puede eliminarlo ni modificarlo' },
   { label: 'Consenso alcanzado', detail: 'Ningun servidor lo altero' },
-  { label: 'Proteccion post-cuantica', detail: 'Valido por decadas' },
+  { label: 'Proteccion post-cuantica', detail: 'Compatible con ML-DSA-65 (FIPS 204)' },
 ]
 
 export default function Vote() {
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [tallies, setTallies] = useState<Record<number, TallyResult>>({})
   const [voterName, setVoterName] = useState('')
+  const [passphrase, setPassphrase] = useState('')
   const [err, setErr] = useState('')
   const [receipt, setReceipt] = useState<VoteReceipt | null>(null)
   const [visibleChecks, setVisibleChecks] = useState(0)
+  const [signing, setSigning] = useState(false)
 
-  const registeredVoter = voterName.trim() ? findVoterByName(voterName) : undefined
-  const voterDid = registeredVoter?.did || ''
+  const storedWallets = getStoredWallets()
+  const selectedWallet: StoredWallet | undefined = findWalletByName(voterName)
+  const hasWallet = !!selectedWallet
   const optionLabels: Record<string, string> = { Yes: 'A favor', No: 'En contra', Abstain: 'Abstencion' }
-  const hasVoter = !!registeredVoter
 
   useEffect(() => { load() }, [])
 
@@ -64,10 +73,28 @@ export default function Vote() {
   async function handleVote(proposalId: number, option: 'Yes' | 'No' | 'Abstain') {
     setErr('')
     setReceipt(null)
-    if (!voterName.trim()) { setErr('Ingresa tu nombre'); return }
-    if (!registeredVoter) { setErr('Votante no registrado en el padron. Registrate primero en la seccion Padron.'); return }
+    if (!voterName.trim()) { setErr('Selecciona tu nombre'); return }
+    if (!selectedWallet) { setErr('Votante no registrado en el padron. Registrate primero en Padron.'); return }
+    if (!passphrase) { setErr('Ingresa la clave de tu wallet para firmar el voto'); return }
+
+    setSigning(true)
     try {
-      const res = await castVote(proposalId, { voter: voterDid, option, power: 1 })
+      // Sign vote with wallet private key
+      const signature = await signVote(selectedWallet.walletFile, passphrase, {
+        proposal_id: proposalId,
+        option,
+      })
+
+      const voterDid = didFromWallet(selectedWallet.walletFile)
+
+      // Submit signed vote to backend
+      const res = await castVote(proposalId, {
+        voter: voterDid,
+        option,
+        power: 1,
+        signature,
+        public_key: selectedWallet.walletFile.public_key,
+      })
       const tally = res?.data
       if (tally) {
         setTallies((prev) => ({ ...prev, [proposalId]: tally }))
@@ -81,10 +108,18 @@ export default function Vote() {
         blockHeight: tally?.total_voted_power ?? 0,
         traceId: res?.trace_id ?? '',
         timestamp: res?.timestamp ?? new Date().toISOString(),
+        signature: signature.slice(0, 16) + '...',
       })
       animateChecks()
     } catch (e: unknown) {
-      setErr((e as Error)?.message || 'Error al votar')
+      const msg = (e as Error)?.message || 'Error al votar'
+      if (msg.includes('decryption failed')) {
+        setErr('Clave incorrecta — no se pudo descifrar la wallet')
+      } else {
+        setErr(msg)
+      }
+    } finally {
+      setSigning(false)
     }
   }
 
@@ -93,7 +128,6 @@ export default function Vote() {
     setVisibleChecks(0)
   }
 
-  // Short receipt code from trace_id
   const receiptCode = receipt
     ? `cer-${receipt.proposalId}-${receipt.traceId.slice(0, 8)}`
     : ''
@@ -103,18 +137,31 @@ export default function Vote() {
       {/* Voter bar */}
       <div className="bg-white rounded-lg border border-neutral-100 px-3 py-2 mb-3 shrink-0 flex items-center gap-2">
         <label className="text-xs text-neutral-400 shrink-0">Votante:</label>
-        <input
+        <select
           className="flex-1 min-w-0 rounded border border-neutral-200 px-2 py-1.5 text-sm"
           value={voterName}
           onChange={(e) => setVoterName(e.target.value)}
-          placeholder="Tu nombre"
-        />
-        {voterName.trim() && !registeredVoter && (
-          <span className="text-[10px] text-red-400 shrink-0">No registrado en padron</span>
+        >
+          <option value="">Selecciona tu nombre</option>
+          {storedWallets.map((w) => (
+            <option key={w.walletFile.address} value={w.name}>{w.name}</option>
+          ))}
+        </select>
+        {hasWallet && (
+          <>
+            <input
+              type="password"
+              className="w-40 rounded border border-neutral-200 px-2 py-1.5 text-sm"
+              value={passphrase}
+              onChange={(e) => setPassphrase(e.target.value)}
+              placeholder="Clave wallet"
+            />
+            <span className="text-[10px] text-green-600 shrink-0">Habilitado</span>
+          </>
         )}
-        {!voterName.trim() && <span className="text-[10px] text-neutral-300 shrink-0">Ingresa tu nombre para votar</span>}
-        {registeredVoter && (
-          <span className="text-[10px] text-green-600 shrink-0">Habilitado</span>
+        {!voterName && <span className="text-[10px] text-neutral-300 shrink-0">Selecciona tu wallet</span>}
+        {voterName && !hasWallet && (
+          <span className="text-[10px] text-red-400 shrink-0">No registrado</span>
         )}
       </div>
 
@@ -140,14 +187,15 @@ export default function Vote() {
                         No: 'bg-red-600 hover:bg-red-700 text-white',
                         Abstain: 'bg-neutral-500 hover:bg-neutral-600 text-white',
                       }
+                      const canVote = hasWallet && passphrase.length > 0 && !signing
                       return (
                         <button
                           key={opt}
-                          disabled={!hasVoter}
+                          disabled={!canVote}
                           onClick={() => handleVote(p.id, opt)}
-                          className={`${hasVoter ? active[opt] : 'bg-neutral-100 text-neutral-300 cursor-not-allowed'} px-3 py-1 rounded text-xs font-semibold transition-colors`}
+                          className={`${canVote ? active[opt] : 'bg-neutral-100 text-neutral-300 cursor-not-allowed'} px-3 py-1 rounded text-xs font-semibold transition-colors`}
                         >
-                          {optionLabels[opt]}
+                          {signing ? '...' : optionLabels[opt]}
                         </button>
                       )
                     })}
@@ -180,7 +228,6 @@ export default function Vote() {
           <div className="fixed inset-0 z-40 bg-black/10" onClick={closeReceipt} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
             <div className="bg-white rounded-xl border border-neutral-100 shadow-lg w-full max-w-sm overflow-hidden">
-              {/* Header */}
               <div className="px-5 pt-5 pb-3">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-xs font-semibold text-main-600 uppercase tracking-wide">Comprobante de voto</span>
@@ -192,9 +239,9 @@ export default function Vote() {
                 </div>
                 <p className="text-sm font-semibold text-neutral-900">{receipt.description}</p>
                 <p className="text-xs text-neutral-500 mt-0.5">Votaste: <span className="font-medium text-neutral-700">{receipt.option}</span></p>
+                <p className="text-[10px] font-mono text-neutral-400 mt-1">Firma: {receipt.signature}</p>
               </div>
 
-              {/* Guarantees — animated */}
               <div className="px-5 pb-4 space-y-2.5">
                 {GUARANTEES.map((g, i) => (
                   <div
@@ -220,7 +267,6 @@ export default function Vote() {
                 ))}
               </div>
 
-              {/* Footer — receipt code */}
               <div className="border-t border-neutral-100 px-5 py-3 bg-neutral-50/50">
                 <div className="flex items-center justify-between">
                   <div>
