@@ -6,6 +6,7 @@ import {
   deleteAssembly,
   getSessionsByAssembly,
   validateConvocatoria,
+  getActiveScope,
   type Assembly,
 } from '../lib/store'
 
@@ -60,6 +61,7 @@ export default function Assemblies() {
       description: description.trim(),
       convocatoria_date: convocatoriaDate,
       convocatoria_method: convocatoriaMethod,
+      scope_id: getActiveScope() || '',
     })
     setMsg('Asamblea creada')
     setName('')

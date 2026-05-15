@@ -120,7 +120,7 @@ export default function Scopes() {
     reload()
   }
 
-  function renderTree(parentId: string | null, depth: number): JSX.Element[] {
+  function renderTree(parentId: string | null, depth: number): React.JSX.Element[] {
     return getScopeChildren(parentId).map((scope) => {
       const canManage = hasPermission(currentDid, scope.id, 'manage')
       const myRole = getRoleInScope(currentDid, scope.id)
