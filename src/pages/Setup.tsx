@@ -18,6 +18,7 @@ import {
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
+// Note: pPass is reused as the name/label field in Step 3 (not a passphrase there)
 import { createChannel, registerIdentity, submitProposal } from '../lib/api'
 
 const STEPS = [
@@ -212,19 +213,36 @@ export default function Setup() {
     }
   }
 
-  // ── Step 3: Add participant (create wallet + assign padron name) ──
-  async function addParticipant() {
+  // ── Step 3: Add participant by address/DID ──
+  async function addParticipantByAddress() {
     setErr(''); setPMsg('')
-    if (!pName.trim()) { setErr('Ingresa un nombre para el padron'); return }
-    if (pPass.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
+    const input = pName.trim()
+    if (!input) { setErr('Ingresa una direccion o DID'); return }
+
+    // Determine DID and address
+    const isDid = input.startsWith('did:cerulean:')
+    const address = isDid ? input.replace('did:cerulean:', '') : input
+    const did = isDid ? input : `did:cerulean:${address}`
+    const label = pPass.trim() // pPass reused as name field
 
     setLoading(true)
     try {
-      // Create wallet (no name) then assign padron label
-      const { did } = await createAndRegisterWallet(pPass)
-      assignName(did, pName.trim())
-      setParticipants(getStoredWallets())
-      setPMsg(`Wallet creada — ${pName.trim()} agregado al padron`)
+      // Try to import from vault first (gets the full wallet)
+      const imported = await importFromVault(did)
+      if (imported) {
+        if (label) assignName(did, label)
+        setParticipants(getStoredWallets())
+        setPMsg(`${label || did.slice(0, 25) + '...'} importado desde la red`)
+      } else {
+        // Not in vault — register as identity-only participant (no wallet file needed to be in padron)
+        const placeholderWallet: WalletFile = {
+          version: 1, algorithm: 'ed25519', address, public_key: '',
+          private_key: { type: 'Encrypted', ciphertext: '', salt: '', nonce: '' },
+        }
+        storeWallet(label, placeholderWallet)
+        setParticipants(getStoredWallets())
+        setPMsg(`${label || address.slice(0, 12) + '...'} inscrito en el padron`)
+      }
       setPName(''); setPPass('')
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error')
@@ -461,36 +479,44 @@ export default function Setup() {
           {step === 3 && (
             <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
               <div>
-                <h2 className="text-xl font-bold text-neutral-900">Registrar participantes</h2>
-                <p className="text-sm text-neutral-500 mt-1">Crea una wallet por participante. El nombre es solo para el padron — la wallet se identifica por su DID.</p>
+                <h2 className="text-xl font-bold text-neutral-900">Inscribir participantes</h2>
+                <p className="text-sm text-neutral-500 mt-1">Agrega las direcciones o DIDs de quienes participaran. Cada persona crea su propia wallet.</p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre</label>
-                  <input className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={pName} onChange={(e) => setPName(e.target.value)} placeholder="Nombre completo" />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-neutral-600 mb-1">Clave de wallet</label>
-                  <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={pPass} onChange={(e) => setPPass(e.target.value)} placeholder="Min. 4 caracteres" />
+
+              {/* Add by address/DID */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Direccion o DID de la wallet</label>
+                <div className="flex gap-2">
+                  <input className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-mono" value={pName} onChange={(e) => setPName(e.target.value)}
+                    placeholder="did:cerulean:... o direccion hex" />
+                  <button onClick={addParticipantByAddress} disabled={loading}
+                    className="bg-main-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors shrink-0">
+                    {loading ? '...' : 'Agregar'}
+                  </button>
                 </div>
               </div>
-              <button onClick={addParticipant} disabled={loading}
-                className="w-full bg-neutral-800 text-white py-2 rounded-lg text-sm font-semibold hover:bg-neutral-900 disabled:bg-neutral-300 transition-colors">
-                {loading ? 'Generando wallet...' : 'Registrar participante'}
-              </button>
+
+              {/* Optional: label */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-600 mb-1">Nombre para el padron (opcional)</label>
+                <input className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm" value={pPass} onChange={(e) => setPPass(e.target.value)} placeholder="Ej: Ana Torres" />
+              </div>
+
               {pMsg && <p className="text-xs text-green-700 bg-green-50 rounded p-2">{pMsg}</p>}
 
               {participants.length > 0 && (
                 <div className="border border-neutral-100 rounded-lg divide-y divide-neutral-100">
                   {participants.map((w) => (
                     <div key={w.walletFile.address} className="flex items-center gap-2 px-3 py-2">
-                      <span className="text-sm font-medium flex-1">{w.name}</span>
-                      <span className="text-[10px] font-mono text-neutral-400">{didFromWallet(w.walletFile).slice(0, 25)}...</span>
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">Ed25519</span>
+                      <span className="text-sm font-medium flex-1 min-w-0 truncate">{w.name || didFromWallet(w.walletFile).slice(0, 25) + '...'}</span>
+                      <span className="text-[10px] font-mono text-neutral-400 shrink-0">{w.walletFile.address.slice(0, 12)}...</span>
                     </div>
                   ))}
                 </div>
               )}
+
+              <p className="text-[10px] text-neutral-400">Cada participante debe haber creado su wallet previamente en Cerulean Wallet o en esta plataforma.</p>
+
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setStep(2)} className="flex-1 bg-neutral-100 text-neutral-600 py-2.5 rounded-lg text-sm font-semibold hover:bg-neutral-200 transition-colors">Atras</button>
                 <button onClick={() => setStep(4)}
