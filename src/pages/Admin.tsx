@@ -31,7 +31,7 @@ export default function Admin() {
     } catch { /* empty */ }
     try {
       const h = await getHealth()
-      healthy = h.status === 'ok'
+      healthy = h.status === 'Success' || h.status === 'ok'
     } catch { /* empty */ }
     setStats({ assemblies, sessions, actas, elections, healthy })
   }
