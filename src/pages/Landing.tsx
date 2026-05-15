@@ -1,7 +1,9 @@
 import { useNavigate } from 'react-router-dom'
+import { getOrgSettings } from '../lib/store'
 
 export default function Landing() {
   const nav = useNavigate()
+  const orgConfigured = !!getOrgSettings().org_name
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -28,10 +30,10 @@ export default function Landing() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={() => nav('/dashboard')}
+              onClick={() => nav(orgConfigured ? '/dashboard' : '/setup')}
               className="bg-main-500 text-white px-8 py-3 rounded-xl text-sm font-semibold hover:bg-main-600 transition-colors shadow-lg shadow-main-500/20"
             >
-              Ingresar al sistema
+              {orgConfigured ? 'Ingresar al sistema' : 'Configurar mi organizacion'}
             </button>
             <button
               onClick={() => nav('/results')}
