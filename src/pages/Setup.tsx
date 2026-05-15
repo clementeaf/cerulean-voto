@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
   saveOrgSettings,
@@ -10,13 +10,15 @@ import {
   createAndRegisterWallet,
   importFromVault,
   assignName,
+  storeWallet,
   getStoredWallets,
   didFromWallet,
+  didFromPublicKey,
   signVote,
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
-import { createChannel, submitProposal } from '../lib/api'
+import { createChannel, registerIdentity, submitProposal } from '../lib/api'
 
 const STEPS = [
   { n: 1, label: 'Tu identidad' },
@@ -33,7 +35,8 @@ export default function Setup() {
   const [loading, setLoading] = useState(false)
 
   // Step 1: Admin wallet
-  const [walletMode, setWalletMode] = useState<'new' | 'existing'>('new')
+  const [walletMode, setWalletMode] = useState<'new' | 'existing' | 'extension'>('new')
+  const [extensionAvailable, setExtensionAvailable] = useState(false)
   const [adminPass, setAdminPass] = useState('')
   const [adminPassConfirm, setAdminPassConfirm] = useState('')
   const [importDid, setImportDid] = useState('')
@@ -63,7 +66,59 @@ export default function Setup() {
   const [electionTitle, setElectionTitle] = useState('')
   const [electionDesc, setElectionDesc] = useState('')
 
-  // ── Step 1: Create admin wallet (no name — just keypair) ──
+  // Detect Cerulean Wallet extension
+  useEffect(() => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const w = window as any
+    if (w.cerulean) {
+      setExtensionAvailable(true)
+      setWalletMode('extension')
+    } else {
+      const handler = () => { setExtensionAvailable(true); setWalletMode('extension') }
+      window.addEventListener('cerulean#initialized', handler)
+      return () => window.removeEventListener('cerulean#initialized', handler)
+    }
+  }, [])
+
+  // ── Step 1c: Connect via Chrome extension ──
+  async function connectExtension() {
+    setErr('')
+    setLoading(true)
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cerulean = (window as any).cerulean
+      if (!cerulean) { setErr('Extension no detectada'); setLoading(false); return }
+
+      const { address, publicKey } = await cerulean.connect()
+      const did = didFromPublicKey(publicKey)
+
+      // Register on-chain if not already
+      try {
+        await registerIdentity({ did, public_key: publicKey })
+      } catch { /* may already exist */ }
+
+      // Build a minimal wallet file for local use (signing goes through extension)
+      const extWallet: WalletFile = {
+        version: 1,
+        algorithm: 'ed25519',
+        address,
+        public_key: publicKey,
+        private_key: { type: 'Encrypted', ciphertext: 'extension-managed', salt: '', nonce: '' },
+      }
+      setAdminWallet(extWallet)
+      setAdminDid(did)
+      // Cache locally
+      storeWallet('', extWallet)
+      setParticipants(getStoredWallets())
+      setStep(2)
+    } catch (e: unknown) {
+      setErr((e as Error)?.message || 'Error al conectar extension')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 1a: Create admin wallet (no name — just keypair) ──
   async function createAdminWallet() {
     setErr('')
     if (adminPass.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
@@ -271,11 +326,19 @@ export default function Setup() {
 
               {/* Tabs */}
               <div className="flex border border-neutral-200 rounded-lg overflow-hidden">
+                {extensionAvailable && (
+                  <button
+                    onClick={() => { setWalletMode('extension'); setErr('') }}
+                    className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'extension' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
+                  >
+                    Extension
+                  </button>
+                )}
                 <button
                   onClick={() => { setWalletMode('existing'); setErr('') }}
                   className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'existing' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
                 >
-                  Ya tengo wallet
+                  Tengo DID
                 </button>
                 <button
                   onClick={() => { setWalletMode('new'); setErr('') }}
@@ -285,7 +348,23 @@ export default function Setup() {
                 </button>
               </div>
 
-              {walletMode === 'existing' ? (
+              {walletMode === 'extension' ? (
+                <>
+                  <div className="bg-green-50 rounded-lg p-4 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto">
+                      <svg className="w-6 h-6 text-green-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-green-800">Cerulean Wallet detectada</p>
+                    <p className="text-xs text-green-700">La extension gestionara tu identidad y firmara tus votos.</p>
+                  </div>
+                  <button onClick={connectExtension} disabled={loading}
+                    className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors">
+                    {loading ? 'Conectando...' : 'Conectar con Cerulean Wallet'}
+                  </button>
+                </>
+              ) : walletMode === 'existing' ? (
                 <>
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Tu DID o direccion</label>
