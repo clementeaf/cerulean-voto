@@ -40,12 +40,22 @@ export interface StoredWallet {
 
 // -- DID derivation ---------------------------------------------------------
 
-export function didFromPublicKey(publicKey: string): string {
-  return `did:cerulean:${publicKey.slice(0, 40)}`
+/** Derive DID from wallet address (sha256(pubkey)[0..20] hex). */
+export function didFromAddress(address: string): string {
+  return `did:cerulean:${address}`
 }
 
+/** Derive DID from public key by computing the address (sha256). */
+export async function didFromPublicKey(publicKey: string): Promise<string> {
+  const bytes = new Uint8Array(publicKey.match(/.{2}/g)!.map(b => parseInt(b, 16)))
+  const hash = await crypto.subtle.digest('SHA-256', bytes)
+  const address = Array.from(new Uint8Array(hash).slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('')
+  return `did:cerulean:${address}`
+}
+
+/** Derive DID from wallet file using the pre-computed address. */
 export function didFromWallet(wallet: WalletFile): string {
-  return didFromPublicKey(wallet.public_key)
+  return didFromAddress(wallet.address)
 }
 
 // -- Wallet generation (WASM) — no name, just crypto -------------------------

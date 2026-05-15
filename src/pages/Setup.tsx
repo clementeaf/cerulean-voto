@@ -13,7 +13,7 @@ import {
   storeWallet,
   getStoredWallets,
   didFromWallet,
-  didFromPublicKey,
+  didFromAddress,
   signVote,
   type StoredWallet,
   type WalletFile,
@@ -90,7 +90,7 @@ export default function Setup() {
       if (!cerulean) { setErr('Extension no detectada'); setLoading(false); return }
 
       const { address, publicKey } = await cerulean.connect()
-      const did = didFromPublicKey(publicKey)
+      const did = didFromAddress(address)
 
       // Register on-chain if not already
       try {
