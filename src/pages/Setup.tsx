@@ -7,8 +7,8 @@ import {
   type OrgSettings,
 } from '../lib/store'
 import {
-  createWallet,
-  registerAndStoreWallet,
+  createAndRegisterWallet,
+  assignName,
   getStoredWallets,
   didFromWallet,
   type StoredWallet,
@@ -30,8 +30,7 @@ export default function Setup() {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Step 1: Admin wallet
-  const [adminName, setAdminName] = useState('')
+  // Step 1: Admin wallet (no name — just crypto)
   const [adminPass, setAdminPass] = useState('')
   const [adminPassConfirm, setAdminPassConfirm] = useState('')
   const [adminWallet, setAdminWallet] = useState<WalletFile | null>(null)
@@ -59,21 +58,17 @@ export default function Setup() {
   const [electionTitle, setElectionTitle] = useState('')
   const [electionDesc, setElectionDesc] = useState('')
 
-  // ── Step 1: Create admin wallet ──
+  // ── Step 1: Create admin wallet (no name — just keypair) ──
   async function createAdminWallet() {
     setErr('')
-    if (!adminName.trim()) { setErr('Tu nombre es obligatorio'); return }
     if (adminPass.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
     if (adminPass !== adminPassConfirm) { setErr('Las claves no coinciden'); return }
 
     setLoading(true)
     try {
-      const wallet = await createWallet(adminPass)
-      const did = didFromWallet(wallet)
-      await registerAndStoreWallet(adminName.trim(), wallet)
-      setAdminWallet(wallet)
+      const { walletFile, did } = await createAndRegisterWallet(adminPass)
+      setAdminWallet(walletFile)
       setAdminDid(did)
-      setPresident(adminName.trim())
       setParticipants(getStoredWallets())
       setStep(2)
     } catch (e: unknown) {
@@ -111,6 +106,13 @@ export default function Setup() {
         founder_did: adminDid,
       }
       saveOrgSettings(settings)
+
+      // Assign president name to admin wallet (wallet was created without name)
+      if (adminDid) {
+        assignName(adminDid, president.trim())
+        setParticipants(getStoredWallets())
+      }
+
       setStep(3)
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error')
@@ -119,18 +121,19 @@ export default function Setup() {
     }
   }
 
-  // ── Step 3: Add participant ──
+  // ── Step 3: Add participant (create wallet + assign padron name) ──
   async function addParticipant() {
     setErr(''); setPMsg('')
-    if (!pName.trim()) { setErr('Ingresa un nombre'); return }
+    if (!pName.trim()) { setErr('Ingresa un nombre para el padron'); return }
     if (pPass.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
 
     setLoading(true)
     try {
-      const walletFile = await createWallet(pPass)
-      await registerAndStoreWallet(pName.trim(), walletFile)
+      // Create wallet (no name) then assign padron label
+      const { did } = await createAndRegisterWallet(pPass)
+      assignName(did, pName.trim())
       setParticipants(getStoredWallets())
-      setPMsg(`${pName.trim()} registrado`)
+      setPMsg(`Wallet creada — ${pName.trim()} agregado al padron`)
       setPName(''); setPPass('')
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error')
@@ -222,16 +225,12 @@ export default function Setup() {
         <div className="w-full max-w-lg">
           {err && <p className="text-xs text-red-700 bg-red-50 rounded-lg p-3 mb-4">{err}</p>}
 
-          {/* ── Step 1: Admin wallet ── */}
+          {/* ── Step 1: Admin wallet (no name — just crypto) ── */}
           {step === 1 && (
             <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-neutral-900">Tu identidad digital</h2>
-                <p className="text-sm text-neutral-500 mt-1">Primero necesitas una wallet. Es tu firma criptografica — con ella creas la organizacion y firmas documentos.</p>
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Tu nombre completo *</label>
-                <input className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Ej: Juan Perez" />
+                <p className="text-sm text-neutral-500 mt-1">Crea tu wallet. Es un par de claves criptograficas — tu firma digital unica. No necesitas nombre, tu identidad es tu clave.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">Clave para tu wallet *</label>
@@ -264,9 +263,10 @@ export default function Setup() {
                 {adminWallet && (
                   <div className="mt-2 bg-green-50 rounded-lg p-2 flex items-center gap-2">
                     <span className="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                    <span className="text-xs text-green-700">Firmando como <span className="font-medium">{adminName}</span> — {adminDid.slice(0, 30)}...</span>
+                    <span className="text-xs text-green-700">Wallet activa: <span className="font-mono">{adminDid.slice(0, 35)}...</span></span>
                   </div>
                 )}
+                <p className="text-[10px] text-neutral-400 mt-1">Tu nombre se asigna como presidente de la organizacion.</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-neutral-700 mb-1">Nombre de la organizacion *</label>
@@ -308,7 +308,7 @@ export default function Setup() {
             <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-neutral-900">Registrar participantes</h2>
-                <p className="text-sm text-neutral-500 mt-1">Cada persona recibe su propia wallet para firmar votos.</p>
+                <p className="text-sm text-neutral-500 mt-1">Crea una wallet por participante. El nombre es solo para el padron — la wallet se identifica por su DID.</p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

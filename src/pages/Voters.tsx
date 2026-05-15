@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  createWallet,
-  registerAndStoreWallet,
+  createAndRegisterWallet,
+  assignName,
   getStoredWallets,
   deleteStoredWallet,
   importFromVault,
@@ -46,14 +46,13 @@ export default function Voters() {
 
   async function handleRegister() {
     setMsg(''); setErr('')
-    if (!name.trim()) { setErr('El nombre es obligatorio'); return }
     if (passphrase.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
 
     setLoading(true)
     try {
-      const walletFile = await createWallet(passphrase)
-      await registerAndStoreWallet(name.trim(), walletFile)
-      setMsg(`${name.trim()} registrado — wallet on-chain + vault backup`)
+      const { did } = await createAndRegisterWallet(passphrase)
+      if (name.trim()) assignName(did, name.trim())
+      setMsg(`Wallet creada${name.trim() ? ` — ${name.trim()} agregado al padron` : ''} (${did.slice(0, 30)}...)`)
       setName(''); setPassphrase('')
       reload()
     } catch (e: unknown) {
@@ -84,10 +83,10 @@ export default function Voters() {
     <div className="h-full flex flex-col min-h-0 gap-3">
       {/* Register */}
       <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
-        <p className="text-xs font-semibold text-neutral-600 mb-2">Registrar votante</p>
+        <p className="text-xs font-semibold text-neutral-600 mb-2">Crear wallet + agregar al padron</p>
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] text-neutral-400 mb-0.5">Nombre completo</label>
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Nombre para padron (opcional)</label>
             <input
               className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm"
               value={name} onChange={(e) => setName(e.target.value)}
@@ -111,7 +110,7 @@ export default function Voters() {
           </button>
         </div>
         <p className="text-[10px] text-neutral-400 mt-2">
-          Genera un keypair Ed25519 real. La clave privada se cifra con Argon2id + AES-256-GCM. La clave de cifrado no se almacena — se necesita para firmar votos.
+          Genera un keypair Ed25519 y lo registra en la red. El nombre es opcional — solo sirve para identificar al votante en el padron.
         </p>
         {msg && <p className="mt-2 text-xs text-green-700 bg-green-50 rounded p-2">{msg}</p>}
         {err && <p className="mt-2 text-xs text-red-700 bg-red-50 rounded p-2">{err}</p>}

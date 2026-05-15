@@ -1,5 +1,5 @@
 // Wallet integration — uses cerulean-wallet WASM for real Ed25519 crypto
-// Wallets are stored on-chain via /vault endpoints. localStorage is a cache.
+// Wallet = keypair (no name). Name is assigned in the padron, not the wallet.
 
 import init, {
   generate_wallet,
@@ -31,8 +31,9 @@ export interface WalletFile {
   }
 }
 
+/** A wallet cached locally. Name is optional — assigned when added to padron. */
 export interface StoredWallet {
-  name: string
+  name: string               // Padron label (empty if not in any padron yet)
   walletFile: WalletFile
   created_at: number
 }
@@ -47,12 +48,30 @@ export function didFromWallet(wallet: WalletFile): string {
   return didFromPublicKey(wallet.public_key)
 }
 
-// -- Wallet generation (WASM) -----------------------------------------------
+// -- Wallet generation (WASM) — no name, just crypto -------------------------
 
+/** Generate a real Ed25519 wallet. No name — pure keypair. */
 export async function createWallet(passphrase: string): Promise<WalletFile> {
   await ensureWasm()
   const json = generate_wallet(passphrase)
   return JSON.parse(json) as WalletFile
+}
+
+/** Create wallet + register DID on-chain + store in vault. No name. */
+export async function createAndRegisterWallet(passphrase: string): Promise<{ walletFile: WalletFile; did: string }> {
+  const walletFile = await createWallet(passphrase)
+  const did = didFromWallet(walletFile)
+
+  // Register DID on-chain
+  await registerIdentity({ did, public_key: walletFile.public_key })
+
+  // Backup encrypted wallet to vault
+  await vaultStore(did, { walletFile, created_at: Date.now() })
+
+  // Cache locally (no name yet)
+  cacheWallet('', walletFile)
+
+  return { walletFile, did }
 }
 
 // -- Vote signing (WASM) ----------------------------------------------------
@@ -70,7 +89,7 @@ export async function signVote(
   return sign_transaction(walletJson, passphrase, payloadHex)
 }
 
-// -- On-chain persistence (vault) + localStorage cache ----------------------
+// -- Local cache (localStorage = cache, vault = source of truth) -------------
 
 const CACHE_KEY = 'cv_wallets'
 
@@ -87,49 +106,29 @@ function writeCache(wallets: StoredWallet[]): void {
   localStorage.setItem(CACHE_KEY, JSON.stringify(wallets))
 }
 
-/** Register a new wallet: blockchain identity + vault backup + local cache. */
-export async function registerAndStoreWallet(name: string, walletFile: WalletFile): Promise<StoredWallet> {
-  const did = didFromWallet(walletFile)
-
-  // 1. Register identity on-chain (DID + public key)
-  await registerIdentity({
-    did,
-    public_key: walletFile.public_key,
-    metadata: { voter_name: name, address: walletFile.address },
-  })
-
-  // 2. Store encrypted wallet on-chain (vault backup)
-  await vaultStore(did, { name, walletFile, created_at: Date.now() })
-
-  // 3. Cache locally
+function cacheWallet(name: string, walletFile: WalletFile): StoredWallet {
   const entry: StoredWallet = { name, walletFile, created_at: Date.now() }
   const list = readCache()
   if (!list.some(w => w.walletFile.address === walletFile.address)) {
     writeCache([...list, entry])
   }
-
   return entry
 }
 
-/** Get wallets from local cache. Call syncFromVault() to refresh from chain. */
-export function getStoredWallets(): StoredWallet[] {
-  return readCache()
+// -- Padron operations (name assignment) -------------------------------------
+
+/** Assign a name to a cached wallet (when admin adds to padron). */
+export function assignName(did: string, name: string): void {
+  const list = readCache().map(w =>
+    didFromWallet(w.walletFile) === did ? { ...w, name } : w,
+  )
+  writeCache(list)
 }
 
-/** Pull a wallet from vault by DID and add to local cache. */
-export async function importFromVault(did: string): Promise<StoredWallet | null> {
-  const result = await vaultGet(did)
-  if (!result?.encrypted_wallet) return null
+// -- Queries ----------------------------------------------------------------
 
-  const vaultData = result.encrypted_wallet as StoredWallet
-  if (!vaultData.walletFile?.address) return null
-
-  const list = readCache()
-  if (!list.some(w => w.walletFile.address === vaultData.walletFile.address)) {
-    writeCache([...list, vaultData])
-  }
-
-  return vaultData
+export function getStoredWallets(): StoredWallet[] {
+  return readCache()
 }
 
 export function findWalletByName(name: string): StoredWallet | undefined {
@@ -145,12 +144,39 @@ export function deleteStoredWallet(address: string): void {
   writeCache(readCache().filter(w => w.walletFile.address !== address))
 }
 
-// Legacy alias — components that call storeWallet still work
-export function storeWallet(name: string, walletFile: WalletFile): StoredWallet {
-  const entry: StoredWallet = { name, walletFile, created_at: Date.now() }
+// -- Vault import ------------------------------------------------------------
+
+/** Pull a wallet from vault by DID and add to local cache. */
+export async function importFromVault(did: string): Promise<StoredWallet | null> {
+  const result = await vaultGet(did)
+  if (!result?.encrypted_wallet) return null
+
+  const vaultData = result.encrypted_wallet as { walletFile?: WalletFile; name?: string; created_at?: number }
+  if (!vaultData.walletFile?.address) return null
+
+  const entry: StoredWallet = {
+    name: vaultData.name || '',
+    walletFile: vaultData.walletFile,
+    created_at: vaultData.created_at || Date.now(),
+  }
+
   const list = readCache()
-  if (!list.some(w => w.walletFile.address === walletFile.address)) {
+  if (!list.some(w => w.walletFile.address === entry.walletFile.address)) {
     writeCache([...list, entry])
   }
+
   return entry
+}
+
+// -- Legacy aliases (backward compat for components not yet migrated) --------
+
+export function storeWallet(name: string, walletFile: WalletFile): StoredWallet {
+  return cacheWallet(name, walletFile)
+}
+
+export async function registerAndStoreWallet(name: string, walletFile: WalletFile): Promise<StoredWallet> {
+  const did = didFromWallet(walletFile)
+  await registerIdentity({ did, public_key: walletFile.public_key })
+  await vaultStore(did, { name, walletFile, created_at: Date.now() })
+  return cacheWallet(name, walletFile)
 }
