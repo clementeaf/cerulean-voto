@@ -7,7 +7,7 @@ import {
   getActas,
   type OrgSettings,
 } from '../lib/store'
-import { getProposals, getHealth } from '../lib/api'
+import { getProposals, getHealth, createChannel } from '../lib/api'
 
 export default function Admin() {
   const [settings, setSettings] = useState<OrgSettings>(getOrgSettings)
@@ -150,6 +150,53 @@ export default function Admin() {
               onChange={(e) => update('quorum_min_segunda', parseInt(e.target.value) || 0)}
             />
             <p className="text-[10px] text-neutral-400 mt-1">0 = se constituye con los que asistan (Ley 19.418)</p>
+          </div>
+          <div className="sm:col-span-2 border-t border-neutral-100 pt-3">
+            <p className="text-xs font-semibold text-neutral-600 mb-3">Canal DLT (aislamiento por organizacion)</p>
+          </div>
+          <div className="sm:col-span-2">
+            <div className="flex items-end gap-3">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-neutral-500 mb-1">Channel ID</label>
+                <input
+                  className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm font-mono"
+                  value={settings.channel_id}
+                  onChange={(e) => update('channel_id', e.target.value)}
+                  placeholder="Se genera automaticamente al crear canal"
+                  readOnly={!!settings.channel_id}
+                />
+              </div>
+              {!settings.channel_id && (
+                <button
+                  onClick={async () => {
+                    if (!settings.org_name.trim()) { setErr('Configura el nombre de la organizacion primero'); return }
+                    try {
+                      const slug = settings.org_name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+                      const result = await createChannel(slug)
+                      update('channel_id', result.channel_id || slug)
+                      saveOrgSettings({ ...settings, channel_id: result.channel_id || slug })
+                      setSaved(true)
+                      setTimeout(() => setSaved(false), 2000)
+                    } catch (e: unknown) {
+                      setErr((e as Error)?.message || 'Error al crear canal')
+                    }
+                  }}
+                  className="bg-main-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-main-600 transition-colors shrink-0"
+                >
+                  Crear canal
+                </button>
+              )}
+              {settings.channel_id && (
+                <span className="text-[10px] px-2 py-1 rounded-full bg-green-50 text-green-700 font-medium shrink-0">
+                  Activo
+                </span>
+              )}
+            </div>
+            <p className="text-[10px] text-neutral-400 mt-1.5">
+              {settings.channel_id
+                ? 'Todas las operaciones (identidades, votos, actas, credenciales) estan aisladas en este canal.'
+                : 'Sin canal propio. Los datos se almacenan en el canal compartido (default). Crea un canal para aislar los datos de tu organizacion.'}
+            </p>
           </div>
         </div>
         {err && <p className="text-xs text-red-700 bg-red-50 px-4 py-2">{err}</p>}

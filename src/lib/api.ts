@@ -1,8 +1,18 @@
 import axios from 'axios';
+import { getOrgSettings } from './store';
 
 const API_URL = '/api/v1';
 
 const client = axios.create({ baseURL: API_URL, timeout: 10000 });
+
+// Inject X-Channel-Id header on every request when org has a channel configured
+client.interceptors.request.use((config) => {
+  const settings = getOrgSettings();
+  if (settings.channel_id) {
+    config.headers['X-Channel-Id'] = settings.channel_id;
+  }
+  return config;
+});
 
 function unwrap<T>(body: unknown): T {
   const r = body as Record<string, unknown>;
@@ -11,6 +21,14 @@ function unwrap<T>(body: unknown): T {
   const msg =
     typeof r.message === 'string' ? r.message : 'Request failed';
   throw new Error(msg);
+}
+
+// -- Channel management -----------------------------------------------------
+
+export async function createChannel(name: string): Promise<{ channel_id: string }> {
+  const { data } = await client.post('/channels', { name });
+  const result = unwrap<Record<string, unknown>>(data);
+  return { channel_id: (result.channel_id as string) || (result.id as string) || name };
 }
 
 // -- Governance API (existing backend) --------------------------------------

@@ -89,6 +89,7 @@ export interface OrgSettings {
   secretary: string
   quorum_min_primera: number   // Quorum primera citacion (mayoria absoluta)
   quorum_min_segunda: number   // Quorum segunda citacion (los que asistan)
+  channel_id: string           // DLT channel — aislamiento de datos por organizacion
 }
 
 function read<T>(key: string, fallback: T): T {
@@ -244,6 +245,7 @@ const DEFAULT_SETTINGS: OrgSettings = {
   secretary: '',
   quorum_min_primera: 50,  // Mayoria absoluta (% de miembros)
   quorum_min_segunda: 0,   // Los que asistan (sin minimo)
+  channel_id: '',          // Empty = default channel (shared)
 }
 
 export function getOrgSettings(): OrgSettings {
