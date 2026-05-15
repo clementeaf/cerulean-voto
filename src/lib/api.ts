@@ -104,7 +104,13 @@ export async function registerIdentity(body: {
   public_key: string;
   metadata?: Record<string, string>;
 }): Promise<unknown> {
-  const { data } = await client.post('/store/identities', body);
+  const now = Math.floor(Date.now() / 1000);
+  const { data } = await client.post('/store/identities', {
+    did: body.did,
+    created_at: now,
+    updated_at: now,
+    status: 'active',
+  });
   return unwrap(data);
 }
 
