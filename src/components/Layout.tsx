@@ -60,37 +60,46 @@ export default function Layout(): ReactElement {
             ${sidebarOpen ? 'translate-x-0' : '-translate-x-full'}
           `}
         >
-          <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest px-3 mb-2">
-            Votacion
-          </p>
-          {routes.map((item) => (
-            <NavLink
-              key={item.path}
-              to={item.path}
-              end={item.path === '/dashboard'}
-              onClick={() => setSidebarOpen(false)}
-              className={({ isActive }) =>
-                `group flex flex-col px-3 py-2 rounded-xl mb-0.5 transition-all duration-150 ${
-                  isActive
-                    ? 'bg-main-500 text-white shadow-sm'
-                    : 'text-neutral-700 hover:bg-neutral-100'
-                }`
-              }
-            >
-              {({ isActive }) => (
-                <>
-                  <span className="text-sm font-semibold">{item.label}</span>
-                  <span
-                    className={`text-[11px] leading-tight mt-0.5 ${
-                      isActive ? 'text-white/70' : 'text-neutral-400 group-hover:text-neutral-500'
-                    }`}
-                  >
-                    {item.desc}
-                  </span>
-                </>
-              )}
-            </NavLink>
-          ))}
+          {(() => {
+            const groups = [...new Set(routes.map((r) => r.group))]
+            return groups.map((group) => (
+              <div key={group} className="mb-3">
+                <p className="text-[10px] font-bold text-neutral-400 uppercase tracking-widest px-3 mb-1">
+                  {group}
+                </p>
+                {routes
+                  .filter((r) => r.group === group)
+                  .map((item) => (
+                    <NavLink
+                      key={item.path}
+                      to={item.path}
+                      end={item.path === '/dashboard'}
+                      onClick={() => setSidebarOpen(false)}
+                      className={({ isActive }) =>
+                        `group flex flex-col px-3 py-2 rounded-xl mb-0.5 transition-all duration-150 ${
+                          isActive
+                            ? 'bg-main-500 text-white shadow-sm'
+                            : 'text-neutral-700 hover:bg-neutral-100'
+                        }`
+                      }
+                    >
+                      {({ isActive }) => (
+                        <>
+                          <span className="text-sm font-semibold">{item.label}</span>
+                          <span
+                            className={`text-[11px] leading-tight mt-0.5 ${
+                              isActive ? 'text-white/70' : 'text-neutral-400 group-hover:text-neutral-500'
+                            }`}
+                          >
+                            {item.desc}
+                          </span>
+                        </>
+                      )}
+                    </NavLink>
+                  ))}
+              </div>
+            ))
+          })()}
         </aside>
 
         {/* Backdrop for mobile */}
