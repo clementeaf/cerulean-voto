@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { QRCodeSVG } from 'qrcode.react'
 import { registerIdentity } from '../lib/api'
 import {
   createWallet,
@@ -146,43 +147,77 @@ export default function Voters() {
                       )}
                     </div>
 
-                    {/* Expanded details */}
+                    {/* Expanded details + QR */}
                     {isExpanded && (
-                      <div className="mt-2 bg-neutral-50 rounded-lg p-3 space-y-2 text-xs">
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">DID (W3C)</p>
-                            <p className="font-mono text-neutral-600 break-all select-all">{did}</p>
+                      <div className="mt-2 bg-neutral-50 rounded-lg p-3 text-xs">
+                        <div className="flex gap-4">
+                          {/* QR */}
+                          <div className="shrink-0 flex flex-col items-center">
+                            <div className="bg-white border border-neutral-200 rounded-xl p-3">
+                              <QRCodeSVG
+                                value={JSON.stringify({
+                                  type: 'cerulean-wallet-link',
+                                  did,
+                                  address: w.walletFile.address,
+                                  public_key: w.walletFile.public_key,
+                                  algorithm: w.walletFile.algorithm,
+                                })}
+                                size={120}
+                                level="M"
+                                bgColor="#ffffff"
+                                fgColor="#171717"
+                              />
+                            </div>
+                            <p className="text-[9px] text-neutral-400 mt-1.5 text-center">Escanear para vincular wallet</p>
                           </div>
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">Address</p>
-                            <p className="font-mono text-neutral-600 break-all select-all">{w.walletFile.address}</p>
+
+                          {/* Details */}
+                          <div className="flex-1 min-w-0 space-y-2">
+                            <div>
+                              <p className="text-[10px] text-neutral-400 uppercase">DID (W3C)</p>
+                              <p className="font-mono text-neutral-600 break-all select-all">{did}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-neutral-400 uppercase">Address</p>
+                              <p className="font-mono text-neutral-600 break-all select-all">{w.walletFile.address}</p>
+                            </div>
+                            <div>
+                              <p className="text-[10px] text-neutral-400 uppercase">Public Key</p>
+                              <p className="font-mono text-neutral-600 break-all select-all">{w.walletFile.public_key}</p>
+                            </div>
+                            <div className="grid grid-cols-3 gap-2">
+                              <div>
+                                <p className="text-[10px] text-neutral-400 uppercase">Algoritmo</p>
+                                <p className="text-neutral-600">{w.walletFile.algorithm === 'ed25519' ? 'Ed25519' : w.walletFile.algorithm}</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-neutral-400 uppercase">Cifrado</p>
+                                <p className="text-neutral-600">Argon2id + AES-256-GCM</p>
+                              </div>
+                              <div>
+                                <p className="text-[10px] text-neutral-400 uppercase">Registrado</p>
+                                <p className="text-neutral-600">{new Date(w.created_at).toLocaleString('es-CL')}</p>
+                              </div>
+                            </div>
+                            <div className="flex gap-3 pt-1">
+                              <a href={`/api/v1/did/${encodeURIComponent(did)}`} target="_blank" rel="noreferrer"
+                                className="text-[10px] text-main-600 hover:underline">
+                                DID Document (W3C)
+                              </a>
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(did) }}
+                                className="text-[10px] text-main-600 hover:underline"
+                              >
+                                Copiar DID
+                              </button>
+                              <button
+                                onClick={() => { navigator.clipboard.writeText(w.walletFile.address) }}
+                                className="text-[10px] text-main-600 hover:underline"
+                              >
+                                Copiar Address
+                              </button>
+                            </div>
                           </div>
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">Public Key</p>
-                            <p className="font-mono text-neutral-600 break-all select-all">{w.walletFile.public_key}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">Algoritmo</p>
-                            <p className="text-neutral-600">{w.walletFile.algorithm === 'ed25519' ? 'Ed25519 (Curve25519)' : w.walletFile.algorithm}</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">Cifrado en reposo</p>
-                            <p className="text-neutral-600">Argon2id (64MB, 3 iter) + AES-256-GCM</p>
-                          </div>
-                          <div>
-                            <p className="text-[10px] text-neutral-400 uppercase">Registrado</p>
-                            <p className="text-neutral-600">{new Date(w.created_at).toLocaleString('es-CL')}</p>
-                          </div>
-                        </div>
-                        <div className="flex gap-2 pt-1">
-                          <a
-                            href={`/api/v1/did/${encodeURIComponent(did)}`}
-                            target="_blank" rel="noreferrer"
-                            className="text-[10px] text-main-600 hover:underline"
-                          >
-                            Ver DID Document (W3C)
-                          </a>
                         </div>
                       </div>
                     )}
