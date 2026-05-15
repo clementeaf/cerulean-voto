@@ -50,7 +50,7 @@ export default function Actas() {
                   <th className="py-2 pr-3">Fecha</th>
                   <th className="py-2 pr-3">Quorum</th>
                   <th className="py-2 pr-3">Asistentes</th>
-                  <th className="py-2 pr-3">Hash</th>
+                  <th className="py-2 pr-3">Blockchain</th>
                 </tr>
               </thead>
               <tbody>
@@ -72,9 +72,15 @@ export default function Actas() {
                     </td>
                     <td className="py-2.5 pr-3 text-neutral-500">{a.content.attendees_count}</td>
                     <td className="py-2.5 pr-3">
-                      <span className="text-[10px] font-mono text-neutral-400" title={a.integrity_hash}>
-                        {a.integrity_hash.slice(0, 12)}...
-                      </span>
+                      {a.blockchain_tx ? (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-50 text-green-700 font-medium">
+                          Anclada
+                        </span>
+                      ) : (
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600 font-medium">
+                          Pendiente
+                        </span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -265,20 +271,45 @@ export default function Actas() {
 
               {/* Integrity — ISO 15489 */}
               <div className="border-t border-neutral-200 pt-4">
-                <p className="text-xs text-neutral-400 uppercase tracking-wide mb-2">Integridad (ISO 15489)</p>
-                <div className="bg-neutral-50 rounded-lg p-3 space-y-1.5">
+                <p className="text-xs text-neutral-400 uppercase tracking-wide mb-2">Integridad y blockchain (ISO 15489)</p>
+                <div className={`rounded-lg p-3 space-y-1.5 ${selected.blockchain_tx ? 'bg-green-50' : 'bg-neutral-50'}`}>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-neutral-500">Estado</span>
+                    {selected.blockchain_tx ? (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 font-semibold">
+                        Anclada en blockchain
+                      </span>
+                    ) : (
+                      <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-semibold">
+                        Pendiente de anclaje
+                      </span>
+                    )}
+                  </div>
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-neutral-400">Hash SHA-256</span>
-                    <span className="text-[10px] font-mono text-neutral-600 select-all">{selected.integrity_hash}</span>
+                    <span className="text-[10px] font-mono text-neutral-600 select-all">{selected.integrity_hash.slice(0, 32)}...</span>
                   </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] text-neutral-400">DID on-chain</span>
+                    <span className="text-[10px] font-mono text-neutral-600">{`did:cerulean:acta:${selected.folio}`}</span>
+                  </div>
+                  {selected.blockchain_tx && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] text-neutral-400">Trace ID</span>
+                      <span className="text-[10px] font-mono text-neutral-600 select-all">{selected.blockchain_tx}</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-[10px] text-neutral-400">Generada</span>
                     <span className="text-[10px] text-neutral-600">{new Date(selected.generated_at).toLocaleString('es-CL')}</span>
                   </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-neutral-400">Blockchain</span>
-                    <span className="text-[10px] text-neutral-600">{selected.blockchain_tx || 'Pendiente de anclaje'}</span>
-                  </div>
+                  {selected.blockchain_tx && (
+                    <a href={`/api/v1/did/${encodeURIComponent(`did:cerulean:acta:${selected.folio}`)}`}
+                      target="_blank" rel="noreferrer"
+                      className="text-[10px] text-main-600 hover:underline block pt-1">
+                      Verificar en blockchain (DID Document)
+                    </a>
+                  )}
                   <p className="text-[10px] text-neutral-400 pt-1">
                     Registro permanente — no puede ser eliminado ni modificado
                   </p>

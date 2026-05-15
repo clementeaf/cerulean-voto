@@ -185,6 +185,35 @@ export default function Admin() {
         </div>
       </section>
 
+      {/* Interoperability */}
+      <section className="bg-white rounded-lg border border-neutral-100 shrink-0">
+        <div className="px-3 py-2 border-b border-neutral-100">
+          <h2 className="text-sm font-semibold text-neutral-700">Interoperabilidad (W3C)</h2>
+        </div>
+        <div className="px-4 py-3">
+          <p className="text-xs text-neutral-500 mb-3">
+            Endpoints estandar para integracion con sistemas externos.
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            {[
+              { label: 'DID Resolution', path: '/api/v1/did/{did}', desc: 'W3C DID Document (did-core)', type: 'application/did+ld+json' },
+              { label: 'Verifiable Credential', path: '/api/v1/credentials/{id}/vc', desc: 'W3C VC Data Model 2.0', type: 'application/vc+ld+json' },
+              { label: 'JSON-LD Export', path: '/api/v1/governance/proposals/{id}/export', desc: 'schema.org VoteAction', type: 'application/ld+json' },
+              { label: 'OpenAPI Spec', path: '/api/v1/openapi.json', desc: 'OpenAPI 3.0.3 (66 endpoints)', type: 'application/json' },
+            ].map((ep) => (
+              <a key={ep.label} href={ep.path.replace('{did}', 'did:cerulean:example').replace('{id}', '1')}
+                target="_blank" rel="noreferrer"
+                className="border border-neutral-100 rounded-lg p-2.5 hover:bg-neutral-50 transition-colors block"
+              >
+                <p className="text-xs font-semibold text-neutral-800">{ep.label}</p>
+                <p className="text-[10px] text-neutral-500 mt-0.5">{ep.desc}</p>
+                <p className="text-[10px] font-mono text-main-600 mt-1">{ep.type}</p>
+              </a>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Data management */}
       <section className="bg-white rounded-lg border border-neutral-100 shrink-0">
         <div className="px-3 py-2 border-b border-neutral-100">
