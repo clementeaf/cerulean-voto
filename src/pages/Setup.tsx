@@ -8,9 +8,11 @@ import {
 } from '../lib/store'
 import {
   createAndRegisterWallet,
+  importFromVault,
   assignName,
   getStoredWallets,
   didFromWallet,
+  signVote,
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
@@ -30,9 +32,12 @@ export default function Setup() {
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
-  // Step 1: Admin wallet (no name — just crypto)
+  // Step 1: Admin wallet
+  const [walletMode, setWalletMode] = useState<'new' | 'existing'>('new')
   const [adminPass, setAdminPass] = useState('')
   const [adminPassConfirm, setAdminPassConfirm] = useState('')
+  const [importDid, setImportDid] = useState('')
+  const [importPass, setImportPass] = useState('')
   const [adminWallet, setAdminWallet] = useState<WalletFile | null>(null)
   const [adminDid, setAdminDid] = useState('')
 
@@ -73,6 +78,37 @@ export default function Setup() {
       setStep(2)
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error al crear wallet')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // ── Step 1b: Import existing wallet ──
+  async function importExistingWallet() {
+    setErr('')
+    if (!importDid.trim()) { setErr('Ingresa tu DID'); return }
+    if (!importPass) { setErr('Ingresa la clave de tu wallet'); return }
+
+    setLoading(true)
+    try {
+      const result = await importFromVault(importDid.trim())
+      if (!result?.walletFile) { setErr('Wallet no encontrada en la red'); setLoading(false); return }
+
+      // Verify passphrase by attempting to sign a test payload
+      try {
+        await signVote(result.walletFile, importPass, { proposal_id: 0, option: 'test' })
+      } catch {
+        setErr('Clave incorrecta — no se pudo descifrar la wallet')
+        setLoading(false)
+        return
+      }
+
+      setAdminWallet(result.walletFile)
+      setAdminDid(didFromWallet(result.walletFile))
+      setParticipants(getStoredWallets())
+      setStep(2)
+    } catch (e: unknown) {
+      setErr((e as Error)?.message || 'Error al importar')
     } finally {
       setLoading(false)
     }
@@ -225,32 +261,71 @@ export default function Setup() {
         <div className="w-full max-w-lg">
           {err && <p className="text-xs text-red-700 bg-red-50 rounded-lg p-3 mb-4">{err}</p>}
 
-          {/* ── Step 1: Admin wallet (no name — just crypto) ── */}
+          {/* ── Step 1: Admin wallet ── */}
           {step === 1 && (
             <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-neutral-900">Tu identidad digital</h2>
-                <p className="text-sm text-neutral-500 mt-1">Crea tu wallet. Es un par de claves criptograficas — tu firma digital unica. No necesitas nombre, tu identidad es tu clave.</p>
+                <p className="text-sm text-neutral-500 mt-1">Tu wallet es tu firma criptografica. Si ya tienes una, importala. Si no, crea una nueva.</p>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Clave para tu wallet *</label>
-                <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="Minimo 4 caracteres" />
+
+              {/* Tabs */}
+              <div className="flex border border-neutral-200 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => { setWalletMode('existing'); setErr('') }}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'existing' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
+                >
+                  Ya tengo wallet
+                </button>
+                <button
+                  onClick={() => { setWalletMode('new'); setErr('') }}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'new' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
+                >
+                  Crear nueva
+                </button>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-neutral-700 mb-1">Confirmar clave *</label>
-                <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPassConfirm} onChange={(e) => setAdminPassConfirm(e.target.value)} placeholder="Repite la clave" />
-              </div>
-              <button onClick={createAdminWallet} disabled={loading}
-                className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors">
-                {loading ? 'Generando wallet Ed25519...' : 'Crear mi wallet'}
-              </button>
-              <div className="bg-neutral-50 rounded-lg p-3 space-y-1">
-                <p className="text-[10px] text-neutral-500 font-medium">Que se crea:</p>
-                <p className="text-[10px] text-neutral-400">Par de claves Ed25519 (firma digital)</p>
-                <p className="text-[10px] text-neutral-400">Cifrado con Argon2id + AES-256-GCM</p>
-                <p className="text-[10px] text-neutral-400">DID unico derivado de tu clave publica</p>
-                <p className="text-[10px] text-neutral-400">La clave privada nunca sale de tu dispositivo</p>
-              </div>
+
+              {walletMode === 'existing' ? (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Tu DID o direccion</label>
+                    <input className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm font-mono" value={importDid} onChange={(e) => setImportDid(e.target.value)} placeholder="did:cerulean:... o direccion hex" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Clave de tu wallet</label>
+                    <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={importPass} onChange={(e) => setImportPass(e.target.value)} placeholder="La clave con la que cifraste tu wallet" />
+                  </div>
+                  <button onClick={importExistingWallet} disabled={loading}
+                    className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors">
+                    {loading ? 'Verificando...' : 'Ingresar con mi wallet'}
+                  </button>
+                  <p className="text-[10px] text-neutral-400 text-center">
+                    Se busca tu wallet en la red Cerulean y se verifica tu clave.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Clave para tu wallet *</label>
+                    <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="Minimo 4 caracteres" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-neutral-700 mb-1">Confirmar clave *</label>
+                    <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPassConfirm} onChange={(e) => setAdminPassConfirm(e.target.value)} placeholder="Repite la clave" />
+                  </div>
+                  <button onClick={createAdminWallet} disabled={loading}
+                    className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors">
+                    {loading ? 'Generando wallet Ed25519...' : 'Crear mi wallet'}
+                  </button>
+                  <div className="bg-neutral-50 rounded-lg p-3 space-y-1">
+                    <p className="text-[10px] text-neutral-500 font-medium">Que se crea:</p>
+                    <p className="text-[10px] text-neutral-400">Par de claves Ed25519 (firma digital)</p>
+                    <p className="text-[10px] text-neutral-400">Cifrado con Argon2id + AES-256-GCM</p>
+                    <p className="text-[10px] text-neutral-400">DID unico derivado de tu clave publica</p>
+                    <p className="text-[10px] text-neutral-400">Registrado en la red Cerulean + backup en vault</p>
+                  </div>
+                </>
+              )}
             </div>
           )}
 
