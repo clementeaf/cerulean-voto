@@ -1,12 +1,20 @@
 import axios from 'axios';
-import { getOrgSettings } from './store';
+import { getOrgSettings, getActiveScope, getScope } from './store';
 
 const API_URL = '/api/v1';
 
 const client = axios.create({ baseURL: API_URL, timeout: 10000 });
 
-// Inject X-Channel-Id header on every request when org has a channel configured
+// Inject X-Channel-Id: active scope's channel > org channel > none
 client.interceptors.request.use((config) => {
+  const activeScopeId = getActiveScope();
+  if (activeScopeId) {
+    const scope = getScope(activeScopeId);
+    if (scope?.channel_id) {
+      config.headers['X-Channel-Id'] = scope.channel_id;
+      return config;
+    }
+  }
   const settings = getOrgSettings();
   if (settings.channel_id) {
     config.headers['X-Channel-Id'] = settings.channel_id;

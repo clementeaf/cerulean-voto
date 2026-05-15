@@ -1,10 +1,13 @@
 import { useState, type ReactElement } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { routes } from '../lib/routes'
+import { getActiveScope, getScope } from '../lib/store'
 
 export default function Layout(): ReactElement {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const location = useLocation()
+  const activeScopeId = getActiveScope()
+  const activeScope = activeScopeId ? getScope(activeScopeId) : null
 
   const currentPage = routes.find((r) =>
     r.path === '/dashboard'
@@ -43,9 +46,16 @@ export default function Layout(): ReactElement {
               </span>
             )}
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-neutral-400">
-            <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-            Blockchain + BFT + PQC
+          <div className="hidden sm:flex items-center gap-3 text-xs text-neutral-400">
+            {activeScope && (
+              <span className="bg-main-50 text-main-700 px-2 py-0.5 rounded-full font-medium">
+                {activeScope.label}: {activeScope.name}
+              </span>
+            )}
+            <span className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              Blockchain + BFT + PQC
+            </span>
           </div>
         </div>
       </header>
