@@ -10,10 +10,13 @@ import {
   buildChannelId,
   getActiveScope,
   setActiveScope,
+  hasPermission,
+  isFounder,
+  getRoleInScope,
   type Scope,
   type ScopeMember,
 } from '../lib/store'
-import { getStoredWallets, didFromWallet } from '../lib/wallet'
+import { getStoredWallets, didFromWallet, findWalletByName } from '../lib/wallet'
 import { createChannel } from '../lib/api'
 
 export default function Scopes() {
@@ -24,6 +27,19 @@ export default function Scopes() {
   const [selected, setSelected] = useState<Scope | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
+  const [currentUser, setCurrentUser] = useState('')
+
+  // Resolve current user DID
+  const currentDid = (() => {
+    if (!currentUser) return orgSettings.founder_did || ''
+    const w = findWalletByName(currentUser)
+    return w ? didFromWallet(w.walletFile) : ''
+  })()
+  const userIsFounder = isFounder(currentDid)
+
+  // Permission check for selected scope
+  const canManageSelected = selected ? hasPermission(currentDid, selected.id, 'manage') : false
+  const selectedRole = selected ? getRoleInScope(currentDid, selected.id) : null
 
   // Create form
   const [newName, setNewName] = useState('')
@@ -105,42 +121,53 @@ export default function Scopes() {
   }
 
   function renderTree(parentId: string | null, depth: number): JSX.Element[] {
-    return getScopeChildren(parentId).map((scope) => (
-      <div key={scope.id}>
-        <div
-          className={`flex items-center gap-2 px-3 py-2 border-b border-neutral-50 hover:bg-neutral-50 transition-colors ${activeId === scope.id ? 'bg-main-50' : ''}`}
-          style={{ paddingLeft: `${12 + depth * 20}px` }}
-        >
-          {depth > 0 && <span className="text-neutral-300 text-xs">└</span>}
-          <button onClick={() => setSelected(scope)} className="flex-1 text-left min-w-0">
-            <span className="text-sm font-medium text-neutral-800">{scope.name}</span>
-            <span className="text-[10px] text-neutral-400 ml-1.5">{scope.label}</span>
-          </button>
-          <span className="text-[10px] text-neutral-400 shrink-0">{scope.members.length} miembros</span>
-          <button
-            onClick={() => handleActivate(scope.id)}
-            className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 transition-colors ${
-              activeId === scope.id
-                ? 'bg-main-500 text-white'
-                : 'bg-neutral-100 text-neutral-500 hover:bg-main-100 hover:text-main-700'
-            }`}
+    return getScopeChildren(parentId).map((scope) => {
+      const canManage = hasPermission(currentDid, scope.id, 'manage')
+      const myRole = getRoleInScope(currentDid, scope.id)
+      return (
+        <div key={scope.id}>
+          <div
+            className={`flex items-center gap-2 px-3 py-2 border-b border-neutral-50 hover:bg-neutral-50 transition-colors ${activeId === scope.id ? 'bg-main-50' : ''}`}
+            style={{ paddingLeft: `${12 + depth * 20}px` }}
           >
-            {activeId === scope.id ? 'Activo' : 'Activar'}
-          </button>
-          {confirmDelete === scope.id ? (
-            <div className="flex items-center gap-1 shrink-0">
-              <button onClick={() => handleDelete(scope.id)} className="text-xs text-red-600 font-semibold">Si</button>
-              <button onClick={() => setConfirmDelete(null)} className="text-xs text-neutral-400">No</button>
-            </div>
-          ) : (
-            <button onClick={() => setConfirmDelete(scope.id)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
-              Eliminar
+            {depth > 0 && <span className="text-neutral-300 text-xs">└</span>}
+            <button onClick={() => setSelected(scope)} className="flex-1 text-left min-w-0">
+              <span className="text-sm font-medium text-neutral-800">{scope.name}</span>
+              <span className="text-[10px] text-neutral-400 ml-1.5">{scope.label}</span>
             </button>
-          )}
+            {myRole && (
+              <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${ROLE_COLORS[myRole]}`}>
+                {ROLE_LABELS[myRole]}
+              </span>
+            )}
+            <span className="text-[10px] text-neutral-400 shrink-0">{scope.members.length}</span>
+            <button
+              onClick={() => handleActivate(scope.id)}
+              className={`text-[10px] px-2 py-0.5 rounded-full font-medium shrink-0 transition-colors ${
+                activeId === scope.id
+                  ? 'bg-main-500 text-white'
+                  : 'bg-neutral-100 text-neutral-500 hover:bg-main-100 hover:text-main-700'
+              }`}
+            >
+              {activeId === scope.id ? 'Activo' : 'Activar'}
+            </button>
+            {canManage && (
+              confirmDelete === scope.id ? (
+                <div className="flex items-center gap-1 shrink-0">
+                  <button onClick={() => handleDelete(scope.id)} className="text-xs text-red-600 font-semibold">Si</button>
+                  <button onClick={() => setConfirmDelete(null)} className="text-xs text-neutral-400">No</button>
+                </div>
+              ) : (
+                <button onClick={() => setConfirmDelete(scope.id)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
+                  Eliminar
+                </button>
+              )
+            )}
+          </div>
+          {renderTree(scope.id, depth + 1)}
         </div>
-        {renderTree(scope.id, depth + 1)}
-      </div>
-    ))
+      )
+    })
   }
 
   const ROLE_LABELS: Record<string, string> = { admin: 'Admin', voter: 'Votante', observer: 'Observador' }
@@ -153,15 +180,30 @@ export default function Scopes() {
   return (
     <div className="h-full flex flex-col min-h-0 gap-3">
       {/* Header */}
-      <div className="flex items-center justify-between shrink-0">
-        {err && <p className="text-xs text-red-700 bg-red-50 rounded border border-red-100 px-3 py-1.5 mr-3 flex-1">{err}</p>}
+      <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 bg-white rounded-lg border border-neutral-100 px-3 py-1.5">
+          <label className="text-[10px] text-neutral-400 shrink-0">Usuario:</label>
+          <select
+            className="rounded border border-neutral-200 px-2 py-1 text-xs min-w-0"
+            value={currentUser} onChange={(e) => setCurrentUser(e.target.value)}
+          >
+            <option value="">{orgSettings.founder_did ? 'Fundador' : 'Seleccionar'}</option>
+            {wallets.map((w) => (
+              <option key={w.walletFile.address} value={w.name}>{w.name}</option>
+            ))}
+          </select>
+          {userIsFounder && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-medium shrink-0">Fundador</span>}
+        </div>
+        {err && <p className="text-xs text-red-700 bg-red-50 rounded border border-red-100 px-3 py-1.5 flex-1">{err}</p>}
         <div className="flex-1" />
-        <button
-          onClick={() => { setDrawerOpen(true); setMsg(''); setErr('') }}
-          className="bg-main-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-main-600 transition-colors"
-        >
-          + Nueva unidad
-        </button>
+        {(userIsFounder || currentDid) && (
+          <button
+            onClick={() => { setDrawerOpen(true); setMsg(''); setErr('') }}
+            className="bg-main-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-main-600 transition-colors"
+          >
+            + Nueva unidad
+          </button>
+        )}
       </div>
 
       <div className="flex-1 min-h-0 flex gap-3">
@@ -195,7 +237,23 @@ export default function Scopes() {
               </button>
             </div>
             <div className="flex-1 overflow-y-auto p-3 space-y-3">
-              {/* Add member */}
+              {/* Permission banner */}
+              {selectedRole && (
+                <div className={`rounded-lg p-2 text-[10px] ${selectedRole === 'admin' ? 'bg-purple-50 text-purple-700' : selectedRole === 'voter' ? 'bg-green-50 text-green-700' : 'bg-neutral-50 text-neutral-500'}`}>
+                  Tu rol: <span className="font-semibold">{ROLE_LABELS[selectedRole]}</span>
+                  {selectedRole === 'admin' && ' — puedes gestionar miembros y sub-unidades'}
+                  {selectedRole === 'voter' && ' — puedes votar en elecciones de esta unidad'}
+                  {selectedRole === 'observer' && ' — puedes ver resultados (solo lectura)'}
+                </div>
+              )}
+              {!selectedRole && !userIsFounder && (
+                <div className="rounded-lg p-2 text-[10px] bg-red-50 text-red-600">
+                  No tienes acceso a esta unidad.
+                </div>
+              )}
+
+              {/* Add member — admin only */}
+              {canManageSelected && (
               <div>
                 <p className="text-xs font-semibold text-neutral-600 mb-1.5">Agregar miembro</p>
                 <div className="flex gap-1.5">
@@ -226,6 +284,7 @@ export default function Scopes() {
                   </button>
                 </div>
               </div>
+              )}
 
               {/* Members list */}
               <div>
@@ -240,9 +299,11 @@ export default function Scopes() {
                         <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${ROLE_COLORS[m.role]}`}>
                           {ROLE_LABELS[m.role]}
                         </span>
-                        <button onClick={() => handleRemoveMember(m.did)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
-                          Quitar
-                        </button>
+                        {canManageSelected && (
+                          <button onClick={() => handleRemoveMember(m.did)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
+                            Quitar
+                          </button>
+                        )}
                       </div>
                     ))}
                   </div>

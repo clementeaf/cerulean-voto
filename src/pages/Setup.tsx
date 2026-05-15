@@ -109,6 +109,7 @@ export default function Setup() {
         quorum_min_primera: 50,
         quorum_min_segunda: 0,
         channel_id: channelId,
+        founder_did: adminDid,
       }
       saveOrgSettings(settings)
       setStep(3)

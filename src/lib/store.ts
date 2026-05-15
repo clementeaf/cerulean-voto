@@ -84,6 +84,7 @@ export interface OrgSettings {
   quorum_min_primera: number
   quorum_min_segunda: number
   channel_id: string
+  founder_did: string          // DID of the org creator — root admin of everything
 }
 
 // ── Scopes (generic organizational units) ────────────────────────────────
@@ -314,6 +315,7 @@ const DEFAULT_SETTINGS: OrgSettings = {
   quorum_min_primera: 50,
   quorum_min_segunda: 0,
   channel_id: '',
+  founder_did: '',
 }
 
 export function getOrgSettings(): OrgSettings {
@@ -322,4 +324,85 @@ export function getOrgSettings(): OrgSettings {
 
 export function saveOrgSettings(s: OrgSettings): void {
   write('org_settings', s)
+}
+
+// ── Permissions engine ──────────────────────────────────────────────────
+// Propagated tree permissions:
+//   - Founder is admin of everything (root)
+//   - Admin of a scope is admin of all its children (inherited)
+//   - Voter/observer roles do NOT propagate downward
+//
+// Actions:
+//   'manage'    — create elections, manage members, create sub-scopes
+//   'vote'      — cast votes in elections
+//   'view'      — see results, actas, assemblies
+
+export type Permission = 'manage' | 'vote' | 'view'
+
+/** Get the role of a DID in a specific scope, considering inheritance. */
+export function getRoleInScope(did: string, scopeId: string): ScopeMember['role'] | null {
+  const org = getOrgSettings()
+
+  // Founder is admin everywhere
+  if (org.founder_did && org.founder_did === did) return 'admin'
+
+  // Check direct membership
+  const scope = getScope(scopeId)
+  if (!scope) return null
+
+  const directMember = scope.members.find((m) => m.did === did)
+  if (directMember) return directMember.role
+
+  // Check inherited admin from parent chain
+  let parentId = scope.parent_id
+  while (parentId) {
+    const parent = getScope(parentId)
+    if (!parent) break
+    const parentMember = parent.members.find((m) => m.did === did)
+    if (parentMember?.role === 'admin') return 'admin' // admin propagates down
+    parentId = parent.parent_id
+  }
+
+  return null
+}
+
+/** Check if a DID has a specific permission in a scope. */
+export function hasPermission(did: string, scopeId: string, permission: Permission): boolean {
+  const role = getRoleInScope(did, scopeId)
+  if (!role) return false
+
+  switch (permission) {
+    case 'manage':
+      return role === 'admin'
+    case 'vote':
+      return role === 'admin' || role === 'voter'
+    case 'view':
+      return true // all roles can view
+  }
+}
+
+/** Get all scopes where a DID has at least 'view' permission. */
+export function getAccessibleScopes(did: string): Array<{ scope: Scope; role: ScopeMember['role'] }> {
+  const org = getOrgSettings()
+  const allScopes = getScopes()
+
+  // Founder sees everything
+  if (org.founder_did && org.founder_did === did) {
+    return allScopes.map((scope) => ({ scope, role: 'admin' as const }))
+  }
+
+  const result: Array<{ scope: Scope; role: ScopeMember['role'] }> = []
+
+  for (const scope of allScopes) {
+    const role = getRoleInScope(did, scope.id)
+    if (role) result.push({ scope, role })
+  }
+
+  return result
+}
+
+/** Check if a DID is the org founder. */
+export function isFounder(did: string): boolean {
+  const org = getOrgSettings()
+  return !!org.founder_did && org.founder_did === did
 }
