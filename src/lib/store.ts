@@ -224,6 +224,13 @@ export async function saveActa(a: Omit<Acta, 'id' | 'generated_at' | 'folio' | '
   return item
 }
 
+export function updateActaBlockchainTx(actaId: string, txId: string): void {
+  const list = getActas().map((a) =>
+    a.id === actaId ? { ...a, blockchain_tx: txId } : a,
+  )
+  write('actas', list)
+}
+
 // Actas are NEVER deleted (ISO 15489 — permanent records)
 // deleteActa intentionally removed
 

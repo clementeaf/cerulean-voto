@@ -8,11 +8,12 @@ import {
   updateSession,
   deleteSession,
   saveActa,
+  updateActaBlockchainTx,
   type Session,
   type AgendaItem,
   type Assembly,
 } from '../lib/store'
-import { getProposals, type Proposal } from '../lib/api'
+import { getProposals, anchorActaHash, type Proposal } from '../lib/api'
 
 const STATUS_COLORS: Record<string, string> = {
   planificada: 'bg-neutral-100 text-neutral-600',
@@ -144,7 +145,7 @@ export default function Sessions() {
     // Auto-generate acta with all legally required fields
     if (assembly) {
       try {
-        await saveActa({
+        const acta = await saveActa({
           session_id: s.id,
           assembly_id: assemblyId,
           content: {
@@ -171,6 +172,19 @@ export default function Sessions() {
             secretary: orgSettings.secretary,
           },
         })
+
+        // Anchor acta hash on blockchain (ISO 15489 — integrity)
+        try {
+          const anchor = await anchorActaHash({
+            folio: acta.folio,
+            integrity_hash: acta.integrity_hash,
+            session_number: s.number,
+            assembly_name: assembly.name,
+          })
+          updateActaBlockchainTx(acta.id, anchor.trace_id || anchor.did)
+        } catch {
+          // Acta saved locally even if anchoring fails — can retry later
+        }
       } catch (e: unknown) {
           setErr(`Acta no generada: ${(e as Error).message || 'error desconocido'}`)
         }

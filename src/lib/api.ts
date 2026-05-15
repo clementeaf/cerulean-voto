@@ -87,6 +87,34 @@ export async function getIdentity(did: string): Promise<unknown> {
   return unwrap(data);
 }
 
+// -- Acta anchoring ---------------------------------------------------------
+
+export async function anchorActaHash(acta: {
+  folio: number;
+  integrity_hash: string;
+  session_number: number;
+  assembly_name: string;
+}): Promise<{ did: string; trace_id: string }> {
+  const did = `did:cerulean:acta:${acta.folio}`;
+  const { data } = await client.post('/store/identities', {
+    did,
+    public_key: acta.integrity_hash,
+    metadata: {
+      type: 'acta',
+      folio: String(acta.folio),
+      integrity_hash: acta.integrity_hash,
+      session_number: String(acta.session_number),
+      assembly_name: acta.assembly_name,
+      anchored_at: new Date().toISOString(),
+    },
+  });
+  const result = data as Record<string, unknown>;
+  return {
+    did,
+    trace_id: (result.trace_id as string) || '',
+  };
+}
+
 // -- Health -----------------------------------------------------------------
 
 export async function getHealth(): Promise<{ status: string }> {
