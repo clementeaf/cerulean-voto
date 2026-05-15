@@ -141,6 +141,21 @@ export async function anchorActaHash(acta: {
   };
 }
 
+// -- Vault (wallet backup on-chain) -----------------------------------------
+
+export async function vaultStore(did: string, encryptedWallet: unknown): Promise<void> {
+  await client.post('/vault/store', { did, encrypted_wallet: encryptedWallet });
+}
+
+export async function vaultGet(did: string): Promise<{ did: string; encrypted_wallet: unknown } | null> {
+  try {
+    const { data } = await client.get(`/vault/${encodeURIComponent(did)}`);
+    return unwrap<{ did: string; encrypted_wallet: unknown }>(data);
+  } catch {
+    return null;
+  }
+}
+
 // -- Health -----------------------------------------------------------------
 
 export async function getHealth(): Promise<{ status: string }> {

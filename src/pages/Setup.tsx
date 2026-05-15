@@ -8,13 +8,13 @@ import {
 } from '../lib/store'
 import {
   createWallet,
-  storeWallet,
+  registerAndStoreWallet,
   getStoredWallets,
   didFromWallet,
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
-import { createChannel, registerIdentity, submitProposal } from '../lib/api'
+import { createChannel, submitProposal } from '../lib/api'
 
 const STEPS = [
   { n: 1, label: 'Tu identidad' },
@@ -70,8 +70,7 @@ export default function Setup() {
     try {
       const wallet = await createWallet(adminPass)
       const did = didFromWallet(wallet)
-      await registerIdentity({ did, public_key: wallet.public_key, metadata: { voter_name: adminName.trim(), role: 'admin' } })
-      storeWallet(adminName.trim(), wallet)
+      await registerAndStoreWallet(adminName.trim(), wallet)
       setAdminWallet(wallet)
       setAdminDid(did)
       setPresident(adminName.trim())
@@ -129,9 +128,7 @@ export default function Setup() {
     setLoading(true)
     try {
       const walletFile = await createWallet(pPass)
-      const did = didFromWallet(walletFile)
-      await registerIdentity({ did, public_key: walletFile.public_key, metadata: { voter_name: pName.trim() } })
-      storeWallet(pName.trim(), walletFile)
+      await registerAndStoreWallet(pName.trim(), walletFile)
       setParticipants(getStoredWallets())
       setPMsg(`${pName.trim()} registrado`)
       setPName(''); setPPass('')

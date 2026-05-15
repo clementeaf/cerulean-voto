@@ -1,10 +1,11 @@
 // Wallet integration — uses cerulean-wallet WASM for real Ed25519 crypto
-// Same Argon2id + AES-256-GCM as the CLI. Wallets are cross-compatible.
+// Wallets are stored on-chain via /vault endpoints. localStorage is a cache.
 
 import init, {
   generate_wallet,
   sign_transaction,
 } from '../wasm/cerulean_wallet'
+import { vaultStore, vaultGet, registerIdentity } from './api'
 
 let wasmReady = false
 
@@ -38,19 +39,16 @@ export interface StoredWallet {
 
 // -- DID derivation ---------------------------------------------------------
 
-/** Derive a deterministic DID from a public key (same as wallet address). */
 export function didFromPublicKey(publicKey: string): string {
   return `did:cerulean:${publicKey.slice(0, 40)}`
 }
 
-/** Derive a deterministic DID from a wallet file. */
 export function didFromWallet(wallet: WalletFile): string {
   return didFromPublicKey(wallet.public_key)
 }
 
 // -- Wallet generation (WASM) -----------------------------------------------
 
-/** Generate a real Ed25519 wallet. Returns encrypted wallet file. */
 export async function createWallet(passphrase: string): Promise<WalletFile> {
   await ensureWasm()
   const json = generate_wallet(passphrase)
@@ -59,14 +57,12 @@ export async function createWallet(passphrase: string): Promise<WalletFile> {
 
 // -- Vote signing (WASM) ----------------------------------------------------
 
-/** Build a vote signing payload and sign it with the wallet's private key. */
 export async function signVote(
   walletFile: WalletFile,
   passphrase: string,
   payload: { proposal_id: number; option: string },
 ): Promise<string> {
   await ensureWasm()
-  // Payload format: "vote:{proposal_id}:{option}:{public_key}"
   const message = `vote:${payload.proposal_id}:${payload.option}:${walletFile.public_key}`
   const bytes = new TextEncoder().encode(message)
   const payloadHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -74,32 +70,87 @@ export async function signVote(
   return sign_transaction(walletJson, passphrase, payloadHex)
 }
 
-// -- localStorage persistence ------------------------------------------------
+// -- On-chain persistence (vault) + localStorage cache ----------------------
 
-const WALLETS_KEY = 'cv_wallets'
+const CACHE_KEY = 'cv_wallets'
 
-export function getStoredWallets(): StoredWallet[] {
+function readCache(): StoredWallet[] {
   try {
-    const raw = localStorage.getItem(WALLETS_KEY)
+    const raw = localStorage.getItem(CACHE_KEY)
     return raw ? JSON.parse(raw) as StoredWallet[] : []
   } catch {
     return []
   }
 }
 
-export function storeWallet(name: string, walletFile: WalletFile): StoredWallet {
-  const list = getStoredWallets()
+function writeCache(wallets: StoredWallet[]): void {
+  localStorage.setItem(CACHE_KEY, JSON.stringify(wallets))
+}
+
+/** Register a new wallet: blockchain identity + vault backup + local cache. */
+export async function registerAndStoreWallet(name: string, walletFile: WalletFile): Promise<StoredWallet> {
+  const did = didFromWallet(walletFile)
+
+  // 1. Register identity on-chain (DID + public key)
+  await registerIdentity({
+    did,
+    public_key: walletFile.public_key,
+    metadata: { voter_name: name, address: walletFile.address },
+  })
+
+  // 2. Store encrypted wallet on-chain (vault backup)
+  await vaultStore(did, { name, walletFile, created_at: Date.now() })
+
+  // 3. Cache locally
   const entry: StoredWallet = { name, walletFile, created_at: Date.now() }
-  localStorage.setItem(WALLETS_KEY, JSON.stringify([...list, entry]))
+  const list = readCache()
+  if (!list.some(w => w.walletFile.address === walletFile.address)) {
+    writeCache([...list, entry])
+  }
+
   return entry
+}
+
+/** Get wallets from local cache. Call syncFromVault() to refresh from chain. */
+export function getStoredWallets(): StoredWallet[] {
+  return readCache()
+}
+
+/** Pull a wallet from vault by DID and add to local cache. */
+export async function importFromVault(did: string): Promise<StoredWallet | null> {
+  const result = await vaultGet(did)
+  if (!result?.encrypted_wallet) return null
+
+  const vaultData = result.encrypted_wallet as StoredWallet
+  if (!vaultData.walletFile?.address) return null
+
+  const list = readCache()
+  if (!list.some(w => w.walletFile.address === vaultData.walletFile.address)) {
+    writeCache([...list, vaultData])
+  }
+
+  return vaultData
 }
 
 export function findWalletByName(name: string): StoredWallet | undefined {
   const normalized = name.trim().toLowerCase()
-  return getStoredWallets().find(w => w.name.toLowerCase() === normalized)
+  return readCache().find(w => w.name.toLowerCase() === normalized)
+}
+
+export function findWalletByDid(did: string): StoredWallet | undefined {
+  return readCache().find(w => didFromWallet(w.walletFile) === did)
 }
 
 export function deleteStoredWallet(address: string): void {
-  const list = getStoredWallets().filter(w => w.walletFile.address !== address)
-  localStorage.setItem(WALLETS_KEY, JSON.stringify(list))
+  writeCache(readCache().filter(w => w.walletFile.address !== address))
+}
+
+// Legacy alias — components that call storeWallet still work
+export function storeWallet(name: string, walletFile: WalletFile): StoredWallet {
+  const entry: StoredWallet = { name, walletFile, created_at: Date.now() }
+  const list = readCache()
+  if (!list.some(w => w.walletFile.address === walletFile.address)) {
+    writeCache([...list, entry])
+  }
+  return entry
 }

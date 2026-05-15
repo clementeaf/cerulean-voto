@@ -1,11 +1,11 @@
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
-import { registerIdentity } from '../lib/api'
 import {
   createWallet,
-  storeWallet,
+  registerAndStoreWallet,
   getStoredWallets,
   deleteStoredWallet,
+  importFromVault,
   didFromWallet,
   type StoredWallet,
 } from '../lib/wallet'
@@ -17,11 +17,32 @@ export default function Voters() {
 
   const [name, setName] = useState('')
   const [passphrase, setPassphrase] = useState('')
+  const [importDid, setImportDid] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
   function reload() { setWallets(getStoredWallets()) }
+
+  async function handleImport() {
+    setMsg(''); setErr('')
+    if (!importDid.trim()) { setErr('Ingresa el DID de la wallet'); return }
+    setLoading(true)
+    try {
+      const result = await importFromVault(importDid.trim())
+      if (result) {
+        setMsg(`Wallet importada: ${result.name}`)
+        setImportDid('')
+        reload()
+      } else {
+        setErr('Wallet no encontrada en la red. Verifica el DID.')
+      }
+    } catch (e: unknown) {
+      setErr((e as Error)?.message || 'Error al importar')
+    } finally {
+      setLoading(false)
+    }
+  }
 
   async function handleRegister() {
     setMsg(''); setErr('')
@@ -31,14 +52,8 @@ export default function Voters() {
     setLoading(true)
     try {
       const walletFile = await createWallet(passphrase)
-      const did = didFromWallet(walletFile)
-      await registerIdentity({
-        did,
-        public_key: walletFile.public_key,
-        metadata: { voter_name: name.trim(), address: walletFile.address },
-      })
-      storeWallet(name.trim(), walletFile)
-      setMsg(`${name.trim()} registrado — wallet Ed25519 generada`)
+      await registerAndStoreWallet(name.trim(), walletFile)
+      setMsg(`${name.trim()} registrado — wallet on-chain + vault backup`)
       setName(''); setPassphrase('')
       reload()
     } catch (e: unknown) {
@@ -100,6 +115,28 @@ export default function Voters() {
         </p>
         {msg && <p className="mt-2 text-xs text-green-700 bg-green-50 rounded p-2">{msg}</p>}
         {err && <p className="mt-2 text-xs text-red-700 bg-red-50 rounded p-2">{err}</p>}
+      </div>
+
+      {/* Import from vault */}
+      <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
+        <p className="text-xs font-semibold text-neutral-600 mb-2">Importar wallet existente</p>
+        <div className="flex items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <label className="block text-[10px] text-neutral-400 mb-0.5">DID de la wallet</label>
+            <input
+              className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm font-mono"
+              value={importDid} onChange={(e) => setImportDid(e.target.value)}
+              placeholder="did:cerulean:..."
+            />
+          </div>
+          <button onClick={handleImport} disabled={loading}
+            className={`${loading ? 'bg-neutral-300' : 'bg-neutral-800 hover:bg-neutral-900'} text-white px-4 py-1.5 rounded text-sm font-semibold transition-colors shrink-0`}>
+            {loading ? 'Buscando...' : 'Importar desde red'}
+          </button>
+        </div>
+        <p className="text-[10px] text-neutral-400 mt-1.5">
+          Si ya tienes wallet en Cerulean Wallet u otra app, ingresa tu DID para importarla desde la blockchain.
+        </p>
       </div>
 
       {/* Voter table */}
