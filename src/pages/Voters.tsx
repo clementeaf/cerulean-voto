@@ -121,11 +121,11 @@ export default function Voters() {
         <p className="text-xs font-semibold text-neutral-600 mb-2">Importar wallet existente</p>
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] text-neutral-400 mb-0.5">DID de la wallet</label>
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Direccion de la wallet</label>
             <input
               className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm font-mono"
               value={importDid} onChange={(e) => setImportDid(e.target.value)}
-              placeholder="did:cerulean:..."
+              placeholder="Direccion hex de la wallet"
             />
           </div>
           <button onClick={handleImport} disabled={loading}

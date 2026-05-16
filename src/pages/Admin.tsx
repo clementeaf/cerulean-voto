@@ -248,7 +248,7 @@ export default function Admin() {
               { label: 'JSON-LD Export', path: '/api/v1/governance/proposals/{id}/export', desc: 'schema.org VoteAction', type: 'application/ld+json' },
               { label: 'OpenAPI Spec', path: '/api/v1/openapi.json', desc: 'OpenAPI 3.0.3 (66 endpoints)', type: 'application/json' },
             ].map((ep) => (
-              <a key={ep.label} href={ep.path.replace('{did}', 'did:cerulean:example').replace('{id}', '1')}
+              <a key={ep.label} href={ep.path.replace('{did}', 'example').replace('{id}', '1')}
                 target="_blank" rel="noreferrer"
                 className="border border-neutral-100 rounded-lg p-2.5 hover:bg-neutral-50 transition-colors block"
               >

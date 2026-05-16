@@ -290,8 +290,8 @@ export default function Actas() {
                     <span className="text-[10px] font-mono text-neutral-600 select-all">{selected.integrity_hash.slice(0, 32)}...</span>
                   </div>
                   <div className="flex items-center justify-between">
-                    <span className="text-[10px] text-neutral-400">DID on-chain</span>
-                    <span className="text-[10px] font-mono text-neutral-600">{`did:cerulean:acta:${selected.folio}`}</span>
+                    <span className="text-[10px] text-neutral-400">Registro on-chain</span>
+                    <span className="text-[10px] font-mono text-neutral-600">{`acta:${selected.folio}`}</span>
                   </div>
                   {selected.blockchain_tx && (
                     <div className="flex items-center justify-between">

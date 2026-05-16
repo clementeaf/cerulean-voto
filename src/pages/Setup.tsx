@@ -217,7 +217,7 @@ export default function Setup() {
   async function addParticipantByAddress() {
     setErr(''); setPMsg('')
     const input = pName.trim()
-    if (!input) { setErr('Ingresa una direccion o DID'); return }
+    if (!input) { setErr('Ingresa una direccion de wallet'); return }
 
     // Determine DID and address
     const isDid = input.startsWith('did:cerulean:')
@@ -232,7 +232,7 @@ export default function Setup() {
       if (imported) {
         if (label) assignName(did, label)
         setParticipants(getStoredWallets())
-        setPMsg(`${label || did.slice(0, 25) + '...'} importado desde la red`)
+        setPMsg(`${label || address.slice(0, 12) + '...'} importado desde la red`)
       } else {
         // Not in vault — register as identity-only participant (no wallet file needed to be in padron)
         const placeholderWallet: WalletFile = {
@@ -386,7 +386,7 @@ export default function Setup() {
                 <>
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Tu DID o direccion</label>
-                    <input className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm font-mono" value={importDid} onChange={(e) => setImportDid(e.target.value)} placeholder="did:cerulean:... o direccion hex" />
+                    <input className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm font-mono" value={importDid} onChange={(e) => setImportDid(e.target.value)} placeholder="Direccion hex de la wallet" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium text-neutral-700 mb-1">Clave de tu wallet</label>
@@ -488,7 +488,7 @@ export default function Setup() {
                 <label className="block text-xs font-medium text-neutral-600 mb-1">Direccion o DID de la wallet</label>
                 <div className="flex gap-2">
                   <input className="flex-1 rounded-lg border border-neutral-200 px-3 py-2 text-sm font-mono" value={pName} onChange={(e) => setPName(e.target.value)}
-                    placeholder="did:cerulean:... o direccion hex" />
+                    placeholder="Direccion hex de la wallet" />
                   <button onClick={addParticipantByAddress} disabled={loading}
                     className="bg-main-500 text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors shrink-0">
                     {loading ? '...' : 'Agregar'}
