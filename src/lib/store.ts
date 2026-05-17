@@ -9,6 +9,7 @@ import {
   apiGetSessions, apiCreateSession, apiUpdateSession, apiDeleteSession,
   apiGetActas, apiCreateActa, apiUpdateActa,
 } from './api'
+import { setActiveChannel } from './auth'
 
 export interface Assembly {
   id: string
@@ -256,12 +257,10 @@ export function setActiveScope(scopeId: string | null): void {
   if (scopeId) {
     localStorage.setItem('cv_active_scope', scopeId)
     const scope = getScope(scopeId)
-    if (scope?.channel_id) {
-      localStorage.setItem('cv_active_scope_channel', scope.channel_id)
-    }
+    setActiveChannel(scope?.channel_id || null)
   } else {
     localStorage.removeItem('cv_active_scope')
-    localStorage.removeItem('cv_active_scope_channel')
+    setActiveChannel(null)
   }
 }
 

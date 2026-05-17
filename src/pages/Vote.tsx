@@ -7,7 +7,7 @@ import {
   type TallyResult,
 } from '../lib/api'
 import { pct } from '../lib/format'
-import { signVoteWithPrompt } from '../lib/wallet'
+import { signVoteWithPrompt, generateVoteNonce } from '../lib/wallet'
 import { getAuth } from '../lib/auth'
 
 interface VoteReceipt {
@@ -72,8 +72,11 @@ export default function Vote() {
     const wallet = findWalletByDid(auth.did)
     if (!wallet) { setErr('Wallet no encontrada'); return }
 
+    // Generate nonce to salt the blind voter ID — prevents reverse-mapping
+    const nonce = generateVoteNonce()
+
     // Ephemeral passphrase — prompted, used, discarded. Never in React state.
-    const signature = await signVoteWithPrompt(wallet.walletFile, { proposal_id: proposalId, option })
+    const signature = await signVoteWithPrompt(wallet.walletFile, { proposal_id: proposalId, option, nonce })
     if (!signature) return // user cancelled
 
     setSigning(true)
@@ -83,12 +86,13 @@ export default function Vote() {
       const res = await castVote(proposalId, {
         voter: voterDid, option, power: 1,
         signature, public_key: auth.publicKey,
+        nonce,
       })
       const tally = res?.data
       if (tally) setTallies((prev) => ({ ...prev, [proposalId]: tally }))
 
       const proposal = proposals.find((p) => p.id === proposalId)
-      const payloadMsg = `vote:${proposalId}:${option}:${auth.publicKey}`
+      const payloadMsg = `vote:${proposalId}:${option}:${auth.publicKey}:${nonce}`
       const payloadBytes = new TextEncoder().encode(payloadMsg)
       const hashBuf = await crypto.subtle.digest('SHA-256', payloadBytes)
       const payloadHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')

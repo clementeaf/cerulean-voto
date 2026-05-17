@@ -1,6 +1,6 @@
 import axios from 'axios';
 import type { Scope, Assembly, Session, Acta } from './store';
-import { getAuth } from './auth';
+import { getAuth, getActiveChannel } from './auth';
 
 const API_URL = '/api/v1';
 
@@ -44,10 +44,10 @@ client.interceptors.request.use((config) => {
     config.headers['X-Msp-Role'] = auth.role;
   }
 
-  // X-Channel-Id: cached active scope channel > org channel > omit
-  const cachedChannel = localStorage.getItem('cv_active_scope_channel');
-  if (cachedChannel) {
-    config.headers['X-Channel-Id'] = cachedChannel;
+  // X-Channel-Id: active scope channel (in-memory) > org channel > omit
+  const activeChannel = getActiveChannel();
+  if (activeChannel) {
+    config.headers['X-Channel-Id'] = activeChannel;
   } else if (orgChannel) {
     config.headers['X-Channel-Id'] = orgChannel;
   }
@@ -119,6 +119,7 @@ export async function castVote(
     power: number;
     signature?: string;
     public_key?: string;
+    nonce?: string;
   },
 ): Promise<any> {
   const { data } = await client.post(`/governance/proposals/${proposalId}/vote`, body);

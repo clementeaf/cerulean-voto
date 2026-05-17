@@ -261,65 +261,17 @@ export default function Admin() {
         </div>
       </section>
 
-      {/* Data management */}
+      {/* Data persistence info */}
       <section className="bg-white rounded-lg border border-neutral-100 shrink-0">
         <div className="px-3 py-2 border-b border-neutral-100">
-          <h2 className="text-sm font-semibold text-neutral-700">Almacenamiento local</h2>
+          <h2 className="text-sm font-semibold text-neutral-700">Persistencia de datos</h2>
         </div>
-        <div className="px-4 py-4">
-          <p className="text-xs text-neutral-500 mb-3">
-            Los datos de asambleas, sesiones y actas se almacenan en el navegador (localStorage).
-            Las elecciones y votos se almacenan en la blockchain. Las actas son registros permanentes (ISO 15489).
+        <div className="px-4 py-3">
+          <p className="text-xs text-neutral-500">
+            Todos los datos (scopes, asambleas, sesiones, actas, elecciones, votos) se almacenan en la red Cerulean Ledger.
+            Las actas son registros permanentes e inmutables (ISO 15489).
+            Solo la configuracion local de conexion se guarda en el navegador.
           </p>
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => {
-                const data = {
-                  assemblies: localStorage.getItem('cv_assemblies'),
-                  sessions: localStorage.getItem('cv_sessions'),
-                  actas: localStorage.getItem('cv_actas'),
-                  org_settings: localStorage.getItem('cv_org_settings'),
-                  counter_assembly: localStorage.getItem('cv_counter_assembly'),
-                  counter_acta: localStorage.getItem('cv_counter_acta'),
-                }
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-                const url = URL.createObjectURL(blob)
-                const a = document.createElement('a')
-                a.href = url
-                a.download = `cerulean-voto-backup-${new Date().toISOString().slice(0, 10)}.json`
-                a.click()
-                URL.revokeObjectURL(url)
-              }}
-              className="text-xs text-main-600 border border-main-200 px-3 py-1.5 rounded-lg hover:bg-main-50 transition-colors"
-            >
-              Exportar datos
-            </button>
-            <label className="text-xs text-main-600 border border-main-200 px-3 py-1.5 rounded-lg hover:bg-main-50 transition-colors cursor-pointer">
-              Importar datos
-              <input
-                type="file"
-                accept=".json"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0]
-                  if (!file) return
-                  const reader = new FileReader()
-                  reader.onload = () => {
-                    try {
-                      const data = JSON.parse(reader.result as string) as Record<string, string | null>
-                      for (const [key, value] of Object.entries(data)) {
-                        if (value != null) localStorage.setItem(`cv_${key}`, value)
-                      }
-                      loadStats()
-                      setSaved(true)
-                      setTimeout(() => setSaved(false), 2000)
-                    } catch { /* empty */ }
-                  }
-                  reader.readAsText(file)
-                }}
-              />
-            </label>
-          </div>
         </div>
       </section>
     </div>

@@ -236,10 +236,11 @@ describe('Active Scope', () => {
     expect(getActiveScope()).toBeNull()
   })
 
-  it('caches active scope channel_id', async () => {
+  it('sets active channel in auth module', async () => {
     const s = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'org/test', members: [] })
     setActiveScope(s.id)
-    expect(localStorage.getItem('cv_active_scope_channel')).toBe('org/test')
+    const { getActiveChannel } = await import('./auth')
+    expect(getActiveChannel()).toBe('org/test')
   })
 })
 

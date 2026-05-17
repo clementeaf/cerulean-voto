@@ -86,13 +86,21 @@ export async function createAndRegisterWallet(passphrase: string): Promise<{ wal
 
 // -- Vote signing (WASM) ----------------------------------------------------
 
+/** Generate a cryptographic nonce (16 bytes hex) for blind voter ID salt */
+export function generateVoteNonce(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16))
+  return Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 export async function signVote(
   walletFile: WalletFile,
   passphrase: string,
-  payload: { proposal_id: number; option: string },
+  payload: { proposal_id: number; option: string; nonce?: string },
 ): Promise<string> {
   await ensureWasm()
-  const message = `vote:${payload.proposal_id}:${payload.option}:${walletFile.public_key}`
+  // Nonce included in signed message — prevents blind voter ID reverse-mapping
+  const nonce = payload.nonce || ''
+  const message = `vote:${payload.proposal_id}:${payload.option}:${walletFile.public_key}:${nonce}`
   const bytes = new TextEncoder().encode(message)
   const payloadHex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
   const walletJson = JSON.stringify(walletFile)
@@ -108,16 +116,11 @@ export function promptPassphrase(label = 'Ingresa la clave de tu wallet'): strin
 /** Sign a vote with ephemeral passphrase prompt. Returns null if cancelled. */
 export async function signVoteWithPrompt(
   walletFile: WalletFile,
-  payload: { proposal_id: number; option: string },
+  payload: { proposal_id: number; option: string; nonce?: string },
 ): Promise<string | null> {
   const pass = promptPassphrase()
   if (!pass) return null
-  try {
-    return await signVote(walletFile, pass, payload)
-  } finally {
-    // pass is a local variable — goes out of scope here, no zeroing needed
-    // but we ensure it's never assigned to any persistent reference
-  }
+  return await signVote(walletFile, pass, payload)
 }
 
 /** Verify passphrase by signing a test payload. Throws on wrong passphrase. */

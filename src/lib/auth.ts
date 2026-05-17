@@ -14,6 +14,7 @@ export interface AuthState {
 export type MspRole = 'admin' | 'member' | 'observer'
 
 let _auth: AuthState | null = null
+let _activeChannel: string | null = null
 let _listeners: Array<() => void> = []
 
 function notify(): void {
@@ -77,6 +78,16 @@ export function getAuth(): AuthState | null {
   return _auth
 }
 
+/** Set active channel (in-memory — called by store.setActiveScope) */
+export function setActiveChannel(channelId: string | null): void {
+  _activeChannel = channelId
+}
+
+/** Get active channel for API header injection */
+export function getActiveChannel(): string | null {
+  return _activeChannel
+}
+
 /** Check if authenticated */
 export function isAuthenticated(): boolean {
   return _auth !== null
@@ -91,5 +102,6 @@ export function onAuthChange(fn: () => void): () => void {
 /** Reset for testing */
 export function _resetAuth(): void {
   _auth = null
+  _activeChannel = null
   _listeners = []
 }
