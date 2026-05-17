@@ -1,11 +1,14 @@
-// Wallet integration — uses cerulean-wallet WASM for real Ed25519 crypto
+// Wallet integration — WASM used for signing only, not generation.
+// Wallet creation is handled by Cerulean Wallet (web app or Chrome extension).
 // Wallet = keypair (no name). Name is assigned in the padron, not the wallet.
 
 import init, {
-  generate_wallet,
   sign_transaction,
 } from '../wasm/cerulean_wallet'
-import { vaultStore, vaultGet, registerIdentity } from './api'
+import { vaultGet } from './api'
+
+/** URL of the Cerulean Wallet web app — redirect here when user needs to create a wallet */
+export const CERULEAN_WALLET_URL = 'https://wallet.ceruleanledger.com'
 
 let wasmReady = false
 
@@ -56,32 +59,6 @@ export async function didFromPublicKey(publicKey: string): Promise<string> {
 /** Derive DID from wallet file using the pre-computed address. */
 export function didFromWallet(wallet: WalletFile): string {
   return didFromAddress(wallet.address)
-}
-
-// -- Wallet generation (WASM) — no name, just crypto -------------------------
-
-/** Generate a real Ed25519 wallet. No name — pure keypair. */
-export async function createWallet(passphrase: string): Promise<WalletFile> {
-  await ensureWasm()
-  const json = generate_wallet(passphrase)
-  return JSON.parse(json) as WalletFile
-}
-
-/** Create wallet + register DID on-chain + store in vault. No name. */
-export async function createAndRegisterWallet(passphrase: string): Promise<{ walletFile: WalletFile; did: string }> {
-  const walletFile = await createWallet(passphrase)
-  const did = didFromWallet(walletFile)
-
-  // Register DID on-chain
-  await registerIdentity({ did, public_key: walletFile.public_key })
-
-  // Backup encrypted wallet to vault
-  await vaultStore(did, { walletFile, created_at: Date.now() })
-
-  // Cache locally (no name yet)
-  cacheWallet('', walletFile)
-
-  return { walletFile, did }
 }
 
 // -- Vote signing (WASM) ----------------------------------------------------
@@ -222,15 +199,6 @@ export async function importFromVault(did: string): Promise<StoredWallet | null>
   return entry
 }
 
-// -- Legacy aliases (backward compat for components not yet migrated) --------
-
 export function storeWallet(name: string, walletFile: WalletFile): StoredWallet {
-  return cacheWallet(name, walletFile)
-}
-
-export async function registerAndStoreWallet(name: string, walletFile: WalletFile): Promise<StoredWallet> {
-  const did = didFromWallet(walletFile)
-  await registerIdentity({ did, public_key: walletFile.public_key })
-  await vaultStore(did, { name, walletFile, created_at: Date.now() })
   return cacheWallet(name, walletFile)
 }

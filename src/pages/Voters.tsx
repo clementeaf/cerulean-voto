@@ -1,13 +1,14 @@
 import { useState } from 'react'
 import { QRCodeSVG } from 'qrcode.react'
 import {
-  createAndRegisterWallet,
-  assignName,
+  CERULEAN_WALLET_URL,
   getStoredWallets,
   deleteStoredWallet,
   importFromVault,
   didFromWallet,
+  storeWallet,
   type StoredWallet,
+  type WalletFile,
 } from '../lib/wallet'
 
 export default function Voters() {
@@ -15,8 +16,8 @@ export default function Voters() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [expanded, setExpanded] = useState<string | null>(null)
 
-  const [name, setName] = useState('')
-  const [passphrase, setPassphrase] = useState('')
+  const [inscribeAddress, setInscribeAddress] = useState('')
+  const [inscribeName, setInscribeName] = useState('')
   const [importDid, setImportDid] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
@@ -31,7 +32,7 @@ export default function Voters() {
     try {
       const result = await importFromVault(importDid.trim())
       if (result) {
-        setMsg(`Wallet importada: ${result.name}`)
+        setMsg(`Wallet importada: ${result.name || importDid.trim().slice(0, 20) + '...'}`)
         setImportDid('')
         reload()
       } else {
@@ -44,22 +45,23 @@ export default function Voters() {
     }
   }
 
-  async function handleRegister() {
+  function handleInscribe() {
     setMsg(''); setErr('')
-    if (passphrase.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
+    const input = inscribeAddress.trim()
+    if (!input) { setErr('Ingresa una direccion o DID'); return }
 
-    setLoading(true)
-    try {
-      const { did } = await createAndRegisterWallet(passphrase)
-      if (name.trim()) assignName(did, name.trim())
-      setMsg(`Wallet creada${name.trim() ? ` — ${name.trim()} agregado al padron` : ''} (${did.slice(0, 30)}...)`)
-      setName(''); setPassphrase('')
-      reload()
-    } catch (e: unknown) {
-      setErr((e as Error)?.message || 'Error al registrar')
-    } finally {
-      setLoading(false)
+    const isDid = input.startsWith('did:cerulean:')
+    const address = isDid ? input.replace('did:cerulean:', '') : input
+    const label = inscribeName.trim()
+
+    const placeholderWallet: WalletFile = {
+      version: 1, algorithm: 'ed25519', address, public_key: '',
+      private_key: { type: 'Encrypted', ciphertext: '', salt: '', nonce: '' },
     }
+    storeWallet(label, placeholderWallet)
+    setMsg(`${label || address.slice(0, 12) + '...'} inscrito en el padron`)
+    setInscribeAddress(''); setInscribeName('')
+    reload()
   }
 
   function handleDownload(w: StoredWallet) {
@@ -81,37 +83,42 @@ export default function Voters() {
 
   return (
     <div className="h-full flex flex-col min-h-0 gap-3">
-      {/* Register */}
+      {/* Inscribe by address */}
       <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
-        <p className="text-xs font-semibold text-neutral-600 mb-2">Crear wallet + agregar al padron</p>
+        <p className="text-xs font-semibold text-neutral-600 mb-2">Inscribir participante por direccion</p>
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
-            <label className="block text-[10px] text-neutral-400 mb-0.5">Nombre para padron (opcional)</label>
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Direccion o DID de la wallet</label>
+            <input
+              className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm font-mono"
+              value={inscribeAddress} onChange={(e) => setInscribeAddress(e.target.value)}
+              placeholder="Direccion hex de la wallet"
+            />
+          </div>
+          <div className="w-40 shrink-0">
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Nombre (opcional)</label>
             <input
               className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm"
-              value={name} onChange={(e) => setName(e.target.value)}
+              value={inscribeName} onChange={(e) => setInscribeName(e.target.value)}
               placeholder="Juan Perez"
             />
           </div>
-          <div className="flex-1 min-w-0">
-            <label className="block text-[10px] text-neutral-400 mb-0.5">Clave de cifrado</label>
-            <input
-              type="password"
-              className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm"
-              value={passphrase} onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="Minimo 4 caracteres"
-            />
-          </div>
           <button
-            onClick={handleRegister} disabled={loading}
-            className={`${loading ? 'bg-neutral-300' : 'bg-main-500 hover:bg-main-600'} text-white px-4 py-1.5 rounded text-sm font-semibold transition-colors shrink-0`}
+            onClick={handleInscribe}
+            className="bg-main-500 hover:bg-main-600 text-white px-4 py-1.5 rounded text-sm font-semibold transition-colors shrink-0"
           >
-            {loading ? 'Generando...' : 'Registrar'}
+            Inscribir
           </button>
         </div>
-        <p className="text-[10px] text-neutral-400 mt-2">
-          Genera un keypair Ed25519 y lo registra en la red. El nombre es opcional — solo sirve para identificar al votante en el padron.
-        </p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-[10px] text-neutral-400">
+            Cada persona crea su wallet en Cerulean Wallet. Inscribe su direccion para habilitarlo en el padron.
+          </p>
+          <a href={CERULEAN_WALLET_URL} target="_blank" rel="noreferrer"
+            className="text-[10px] text-main-600 hover:underline shrink-0 ml-2">
+            Crear wallet en Cerulean Wallet
+          </a>
+        </div>
         {msg && <p className="mt-2 text-xs text-green-700 bg-green-50 rounded p-2">{msg}</p>}
         {err && <p className="mt-2 text-xs text-red-700 bg-red-50 rounded p-2">{err}</p>}
       </div>
@@ -146,7 +153,7 @@ export default function Voters() {
         </div>
         <div className="flex-1 overflow-y-auto">
           {wallets.length === 0 ? (
-            <p className="text-sm text-neutral-300 p-4">Sin votantes registrados. Usa el formulario de arriba para generar una wallet y registrar un votante.</p>
+            <p className="text-sm text-neutral-300 p-4">Sin votantes registrados. Inscribe participantes por su direccion de wallet o importa desde la red.</p>
           ) : (
             <div className="divide-y divide-neutral-100">
               {wallets.map((w) => {

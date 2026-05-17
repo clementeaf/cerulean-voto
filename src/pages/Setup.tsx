@@ -7,7 +7,7 @@ import {
   type OrgSettings,
 } from '../lib/store'
 import {
-  createAndRegisterWallet,
+  CERULEAN_WALLET_URL,
   importFromVault,
   assignName,
   storeWallet,
@@ -36,10 +36,8 @@ export default function Setup() {
   const [loading, setLoading] = useState(false)
 
   // Step 1: Admin wallet
-  const [walletMode, setWalletMode] = useState<'new' | 'existing' | 'extension'>('new')
+  const [walletMode, setWalletMode] = useState<'existing' | 'extension' | 'create'>('existing')
   const [extensionAvailable, setExtensionAvailable] = useState(false)
-  const [adminPass, setAdminPass] = useState('')
-  const [adminPassConfirm, setAdminPassConfirm] = useState('')
   const [importDid, setImportDid] = useState('')
   const [importPass, setImportPass] = useState('')
   const [adminWallet, setAdminWallet] = useState<WalletFile | null>(null)
@@ -119,28 +117,7 @@ export default function Setup() {
     }
   }
 
-  // ── Step 1a: Create admin wallet (no name — just keypair) ──
-  async function createAdminWallet() {
-    setErr('')
-    if (adminPass.length < 4) { setErr('La clave debe tener al menos 4 caracteres'); return }
-    if (adminPass !== adminPassConfirm) { setErr('Las claves no coinciden'); return }
-
-    setLoading(true)
-    try {
-      const { walletFile, did } = await createAndRegisterWallet(adminPass)
-      setAdminWallet(walletFile)
-      setAdminDid(did)
-      authConnect(did, walletFile.address, walletFile.public_key)
-      setParticipants(getStoredWallets())
-      setStep(2)
-    } catch (e: unknown) {
-      setErr((e as Error)?.message || 'Error al crear wallet')
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  // ── Step 1b: Import existing wallet ──
+  // ── Step 1: Import existing wallet ──
   async function importExistingWallet() {
     setErr('')
     if (!importDid.trim()) { setErr('Ingresa tu DID'); return }
@@ -342,7 +319,7 @@ export default function Setup() {
             <div className="bg-white rounded-xl border border-neutral-200 p-6 space-y-4">
               <div>
                 <h2 className="text-xl font-bold text-neutral-900">Tu identidad digital</h2>
-                <p className="text-sm text-neutral-500 mt-1">Tu wallet es tu firma criptografica. Si ya tienes una, importala. Si no, crea una nueva.</p>
+                <p className="text-sm text-neutral-500 mt-1">Tu wallet es tu firma criptografica. Si ya tienes una, conectala. Si no, crea una en Cerulean Wallet.</p>
               </div>
 
               {/* Tabs */}
@@ -362,10 +339,10 @@ export default function Setup() {
                   Tengo DID
                 </button>
                 <button
-                  onClick={() => { setWalletMode('new'); setErr('') }}
-                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'new' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
+                  onClick={() => { setWalletMode('create'); setErr('') }}
+                  className={`flex-1 py-2 text-sm font-semibold transition-colors ${walletMode === 'create' ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`}
                 >
-                  Crear nueva
+                  Crear wallet
                 </button>
               </div>
 
@@ -405,25 +382,22 @@ export default function Setup() {
                 </>
               ) : (
                 <>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Clave para tu wallet *</label>
-                    <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPass} onChange={(e) => setAdminPass(e.target.value)} placeholder="Minimo 4 caracteres" />
+                  <div className="bg-main-50 rounded-lg p-4 text-center space-y-3">
+                    <div className="w-12 h-12 rounded-full bg-main-100 flex items-center justify-center mx-auto">
+                      <svg className="w-6 h-6 text-main-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                      </svg>
+                    </div>
+                    <p className="text-sm font-semibold text-main-800">Crea tu wallet en Cerulean Wallet</p>
+                    <p className="text-xs text-main-700">Tu wallet se crea en la app oficial. Una vez creada, vuelve aqui e importala con tu DID.</p>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-neutral-700 mb-1">Confirmar clave *</label>
-                    <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2.5 text-sm" value={adminPassConfirm} onChange={(e) => setAdminPassConfirm(e.target.value)} placeholder="Repite la clave" />
-                  </div>
-                  <button onClick={createAdminWallet} disabled={loading}
-                    className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 transition-colors">
-                    {loading ? 'Generando wallet Ed25519...' : 'Crear mi wallet'}
-                  </button>
-                  <div className="bg-neutral-50 rounded-lg p-3 space-y-1">
-                    <p className="text-[10px] text-neutral-500 font-medium">Que se crea:</p>
-                    <p className="text-[10px] text-neutral-400">Par de claves Ed25519 (firma digital)</p>
-                    <p className="text-[10px] text-neutral-400">Cifrado con Argon2id + AES-256-GCM</p>
-                    <p className="text-[10px] text-neutral-400">DID unico derivado de tu clave publica</p>
-                    <p className="text-[10px] text-neutral-400">Registrado en la red Cerulean + backup en vault</p>
-                  </div>
+                  <a href={CERULEAN_WALLET_URL} target="_blank" rel="noreferrer"
+                    className="block w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 transition-colors text-center">
+                    Ir a Cerulean Wallet
+                  </a>
+                  <p className="text-[10px] text-neutral-400 text-center">
+                    Despues de crear tu wallet, vuelve y selecciona "Tengo DID" para importarla.
+                  </p>
                 </>
               )}
             </div>
