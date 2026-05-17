@@ -1,24 +1,57 @@
 import axios from 'axios';
-import { getOrgSettings, getActiveScope, getScope } from './store';
+import type { Scope, Assembly, Session, Acta } from './store';
+import { getAuth } from './auth';
 
 const API_URL = '/api/v1';
 
 const client = axios.create({ baseURL: API_URL, timeout: 10000 });
 
-// Inject X-Channel-Id: active scope's channel > org channel > none
+// Read local config directly from localStorage to avoid circular dependency with store.ts
+function readLocalConfig(key: string): Record<string, unknown> | null {
+  try {
+    const raw = localStorage.getItem(`cv_${key}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Paths that don't require authentication
+const PUBLIC_PATHS = ['/health', '/channels'];
+
+// Inject X-Org-Id, X-Msp-Role, X-Channel-Id on every request
+// Block non-public requests when not authenticated
 client.interceptors.request.use((config) => {
-  const activeScopeId = getActiveScope();
-  if (activeScopeId) {
-    const scope = getScope(activeScopeId);
-    if (scope?.channel_id) {
-      config.headers['X-Channel-Id'] = scope.channel_id;
-      return config;
-    }
+  const auth = getAuth();
+  const path = config.url || '';
+  const isPublic = PUBLIC_PATHS.some((p) => path.startsWith(p));
+
+  // Block unauthenticated requests to protected endpoints
+  if (!auth && !isPublic) {
+    return Promise.reject(new Error('No autenticado — conecta tu wallet primero'));
   }
-  const settings = getOrgSettings();
-  if (settings.channel_id) {
-    config.headers['X-Channel-Id'] = settings.channel_id;
+
+  const settings = readLocalConfig('org_settings') as { channel_id?: string } | null;
+  const orgChannel = settings?.channel_id || '';
+
+  // X-Org-Id
+  if (orgChannel) {
+    config.headers['X-Org-Id'] = orgChannel;
   }
+
+  // X-Msp-Role: derived from authenticated user's actual role
+  if (auth) {
+    config.headers['X-Msp-Role'] = auth.role;
+  }
+
+  // X-Channel-Id: cached active scope channel > org channel > omit
+  const cachedChannel = localStorage.getItem('cv_active_scope_channel');
+  if (cachedChannel) {
+    config.headers['X-Channel-Id'] = cachedChannel;
+  } else if (orgChannel) {
+    config.headers['X-Channel-Id'] = orgChannel;
+  }
+
   return config;
 });
 
@@ -160,6 +193,112 @@ export async function vaultGet(did: string): Promise<{ did: string; encrypted_wa
   } catch {
     return null;
   }
+}
+
+// -- Store: Scopes ----------------------------------------------------------
+
+export async function apiGetScopes(): Promise<Scope[]> {
+  const { data } = await client.get('/store/scopes');
+  return unwrap<Scope[]>(data);
+}
+
+export async function apiGetScope(id: string): Promise<Scope> {
+  const { data } = await client.get(`/store/scopes/${encodeURIComponent(id)}`);
+  return unwrap<Scope>(data);
+}
+
+export async function apiCreateScope(scope: Omit<Scope, 'id' | 'created_at'>): Promise<Scope> {
+  const { data } = await client.post('/store/scopes', scope);
+  return unwrap<Scope>(data);
+}
+
+export async function apiUpdateScope(id: string, scope: Partial<Scope>): Promise<Scope> {
+  const { data } = await client.put(`/store/scopes/${encodeURIComponent(id)}`, scope);
+  return unwrap<Scope>(data);
+}
+
+export async function apiDeleteScope(id: string): Promise<void> {
+  await client.delete(`/store/scopes/${encodeURIComponent(id)}`);
+}
+
+// -- Store: Assemblies ------------------------------------------------------
+
+export async function apiGetAssemblies(scopeId?: string): Promise<Assembly[]> {
+  const params = scopeId ? { scope_id: scopeId } : undefined;
+  const { data } = await client.get('/store/assemblies', { params });
+  return unwrap<Assembly[]>(data);
+}
+
+export async function apiGetAssembly(id: string): Promise<Assembly> {
+  const { data } = await client.get(`/store/assemblies/${encodeURIComponent(id)}`);
+  return unwrap<Assembly>(data);
+}
+
+export async function apiCreateAssembly(assembly: Omit<Assembly, 'id' | 'created_at' | 'folio'>): Promise<Assembly> {
+  const { data } = await client.post('/store/assemblies', assembly);
+  return unwrap<Assembly>(data);
+}
+
+export async function apiUpdateAssembly(id: string, assembly: Partial<Assembly>): Promise<Assembly> {
+  const { data } = await client.put(`/store/assemblies/${encodeURIComponent(id)}`, assembly);
+  return unwrap<Assembly>(data);
+}
+
+export async function apiDeleteAssembly(id: string): Promise<void> {
+  await client.delete(`/store/assemblies/${encodeURIComponent(id)}`);
+}
+
+// -- Store: Sessions --------------------------------------------------------
+
+export async function apiGetSessions(assemblyId?: string): Promise<Session[]> {
+  const params = assemblyId ? { assembly_id: assemblyId } : undefined;
+  const { data } = await client.get('/store/sessions', { params });
+  return unwrap<Session[]>(data);
+}
+
+export async function apiGetSession(id: string): Promise<Session> {
+  const { data } = await client.get(`/store/sessions/${encodeURIComponent(id)}`);
+  return unwrap<Session>(data);
+}
+
+export async function apiCreateSession(session: Omit<Session, 'id'>): Promise<Session> {
+  const { data } = await client.post('/store/sessions', session);
+  return unwrap<Session>(data);
+}
+
+export async function apiUpdateSession(id: string, session: Partial<Session>): Promise<Session> {
+  const { data } = await client.put(`/store/sessions/${encodeURIComponent(id)}`, session);
+  return unwrap<Session>(data);
+}
+
+export async function apiDeleteSession(id: string): Promise<void> {
+  await client.delete(`/store/sessions/${encodeURIComponent(id)}`);
+}
+
+// -- Store: Actas -----------------------------------------------------------
+
+export async function apiGetActas(): Promise<Acta[]> {
+  const { data } = await client.get('/store/actas');
+  return unwrap<Acta[]>(data);
+}
+
+export async function apiGetActa(id: string): Promise<Acta> {
+  const { data } = await client.get(`/store/actas/${encodeURIComponent(id)}`);
+  return unwrap<Acta>(data);
+}
+
+export async function apiCreateActa(acta: Omit<Acta, 'id' | 'generated_at' | 'folio' | 'integrity_hash'>): Promise<Acta> {
+  const { data } = await client.post('/store/actas', acta);
+  return unwrap<Acta>(data);
+}
+
+export async function apiUpdateActa(id: string, acta: Partial<Acta>): Promise<Acta> {
+  const { data } = await client.put(`/store/actas/${encodeURIComponent(id)}`, acta);
+  return unwrap<Acta>(data);
+}
+
+export async function apiDeleteActa(id: string): Promise<void> {
+  await client.delete(`/store/actas/${encodeURIComponent(id)}`);
 }
 
 // -- Health -----------------------------------------------------------------

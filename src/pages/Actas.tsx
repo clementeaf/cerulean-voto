@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
-  getActas,
+  fetchActas,
+  fetchAssemblies,
   getAssemblies,
   type Acta,
 } from '../lib/store'
@@ -13,9 +14,15 @@ const METHOD_LABELS: Record<string, string> = {
 }
 
 export default function Actas() {
-  const [actas] = useState<Acta[]>(getActas)
-  const assemblies = getAssemblies()
+  const [actas, setActas] = useState<Acta[]>([])
   const [selected, setSelected] = useState<Acta | null>(null)
+
+  useEffect(() => {
+    fetchActas().then(setActas)
+    fetchAssemblies()
+  }, [])
+
+  const assemblies = getAssemblies()
 
   function assemblyName(id: string): string {
     return assemblies.find((a) => a.id === id)?.name || '(sin asamblea)'

@@ -1,5 +1,6 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import {
+  fetchScopes,
   getScopes,
   getScopeChildren,
   getOrgSettings,
@@ -16,25 +17,24 @@ import {
   type Scope,
   type ScopeMember,
 } from '../lib/store'
-import { getStoredWallets, didFromWallet, findWalletByName } from '../lib/wallet'
+import { getStoredWallets, didFromWallet } from '../lib/wallet'
+import { getAuth } from '../lib/auth'
 import { createChannel } from '../lib/api'
 
 export default function Scopes() {
-  const [scopes, setScopes] = useState<Scope[]>(getScopes)
+  const [scopes, setScopes] = useState<Scope[]>([])
   const orgSettings = getOrgSettings()
+
+  useEffect(() => { fetchScopes().then(setScopes) }, [])
   const wallets = getStoredWallets()
   const [activeId, setActiveId] = useState<string | null>(getActiveScope)
   const [selected, setSelected] = useState<Scope | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
-  const [currentUser, setCurrentUser] = useState('')
 
-  // Resolve current user DID
-  const currentDid = (() => {
-    if (!currentUser) return orgSettings.founder_did || ''
-    const w = findWalletByName(currentUser)
-    return w ? didFromWallet(w.walletFile) : ''
-  })()
+  // Current user from auth (verified wallet)
+  const auth = getAuth()
+  const currentDid = auth?.did || ''
   const userIsFounder = isFounder(currentDid)
 
   // Permission check for selected scope
@@ -52,9 +52,10 @@ export default function Scopes() {
   const [addMemberDid, setAddMemberDid] = useState('')
   const [addMemberRole, setAddMemberRole] = useState<ScopeMember['role']>('voter')
 
-  function reload() {
-    setScopes(getScopes())
-    if (selected) setSelected(getScopes().find((s) => s.id === selected.id) || null)
+  async function reload() {
+    const fresh = await fetchScopes()
+    setScopes(fresh)
+    if (selected) setSelected(fresh.find((s) => s.id === selected.id) || null)
   }
 
   async function handleCreate() {
@@ -69,7 +70,7 @@ export default function Scopes() {
       await createChannel(channelId)
     } catch { /* channel may already exist */ }
 
-    saveScope({
+    await saveScope({
       name: newName.trim(),
       label: newLabel.trim() || 'Unidad',
       parent_id: newParent || null,
@@ -78,16 +79,16 @@ export default function Scopes() {
     })
     setMsg(`${newLabel} "${newName.trim()}" creado`)
     setNewName('')
-    reload()
+    await reload()
     setTimeout(() => setDrawerOpen(false), 800)
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     try {
-      deleteScope(id)
+      await deleteScope(id)
       setConfirmDelete(null)
       if (activeId === id) { setActiveScope(null); setActiveId(null) }
-      reload()
+      await reload()
     } catch (e: unknown) {
       setErr((e as Error).message)
       setConfirmDelete(null)
@@ -100,24 +101,24 @@ export default function Scopes() {
     setActiveId(next)
   }
 
-  function handleAddMember() {
+  async function handleAddMember() {
     if (!selected || !addMemberDid) return
     const wallet = wallets.find((w) => didFromWallet(w.walletFile) === addMemberDid || w.walletFile.address === addMemberDid)
     const name = wallet?.name || addMemberDid.slice(0, 20)
     const did = wallet ? didFromWallet(wallet.walletFile) : addMemberDid
     try {
-      addScopeMember(selected.id, { did, name, role: addMemberRole, added_at: Date.now() })
+      await addScopeMember(selected.id, { did, name, role: addMemberRole, added_at: Date.now() })
       setAddMemberDid('')
-      reload()
+      await reload()
     } catch (e: unknown) {
       setErr((e as Error).message)
     }
   }
 
-  function handleRemoveMember(did: string) {
+  async function handleRemoveMember(did: string) {
     if (!selected) return
-    removeScopeMember(selected.id, did)
-    reload()
+    await removeScopeMember(selected.id, did)
+    await reload()
   }
 
   function renderTree(parentId: string | null, depth: number): React.JSX.Element[] {
@@ -181,19 +182,6 @@ export default function Scopes() {
     <div className="h-full flex flex-col min-h-0 gap-3">
       {/* Header */}
       <div className="flex items-center gap-2 shrink-0">
-        <div className="flex items-center gap-2 bg-white rounded-lg border border-neutral-100 px-3 py-1.5">
-          <label className="text-[10px] text-neutral-400 shrink-0">Usuario:</label>
-          <select
-            className="rounded border border-neutral-200 px-2 py-1 text-xs min-w-0"
-            value={currentUser} onChange={(e) => setCurrentUser(e.target.value)}
-          >
-            <option value="">{orgSettings.founder_did ? 'Fundador' : 'Seleccionar'}</option>
-            {wallets.map((w) => (
-              <option key={w.walletFile.address} value={w.name}>{w.name}</option>
-            ))}
-          </select>
-          {userIsFounder && <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 font-medium shrink-0">Fundador</span>}
-        </div>
         {err && <p className="text-xs text-red-700 bg-red-50 rounded border border-red-100 px-3 py-1.5 flex-1">{err}</p>}
         <div className="flex-1" />
         {(userIsFounder || currentDid) && (

@@ -265,7 +265,7 @@ export default function Setup() {
       for (const s of scopes) {
         const channelId = buildChannelId(org.channel_id, null, s.name)
         try { await createChannel(channelId) } catch { /* ok */ }
-        saveScope({ name: s.name, label: s.label, parent_id: null, channel_id: channelId, members: [] })
+        await saveScope({ name: s.name, label: s.label, parent_id: null, channel_id: channelId, members: [] })
       }
       setStep(5)
     } catch (e: unknown) {

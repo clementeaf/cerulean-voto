@@ -1,3 +1,4 @@
+/// <reference types="vitest" />
 import https from 'node:https'
 import { defineConfig, loadEnv } from 'vite'
 import react from '@vitejs/plugin-react'
@@ -15,6 +16,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [react(), tailwindcss()],
+    test: {
+      environment: 'happy-dom',
+      globals: true,
+      setupFiles: ['./src/test-setup.ts'],
+    },
     server: {
       port: Number.parseInt(env.VITE_DEV_SERVER_PORT ?? '5174', 10),
       strictPort: false,

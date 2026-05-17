@@ -1,7 +1,8 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useSearchParams, useNavigate } from 'react-router-dom'
 import {
-  getAssemblies,
+  fetchAssemblies,
+  fetchSessions,
   getSessionsByAssembly,
   getOrgSettings,
   saveSession,
@@ -40,11 +41,14 @@ export default function Sessions() {
   const [params] = useSearchParams()
   const nav = useNavigate()
   const assemblyId = params.get('assembly') || ''
-  const assemblies = getAssemblies()
-  const assembly: Assembly | undefined = assemblies.find((a) => a.id === assemblyId)
   const orgSettings = getOrgSettings()
+  const [assembly, setAssembly] = useState<Assembly | undefined>(undefined)
+  const [sessions, setSessions] = useState<Session[]>([])
 
-  const [sessions, setSessions] = useState<Session[]>(() => getSessionsByAssembly(assemblyId))
+  useEffect(() => {
+    fetchAssemblies().then((all) => setAssembly(all.find((a) => a.id === assemblyId)))
+    fetchSessions(assemblyId).then(setSessions)
+  }, [assemblyId])
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [selected, setSelected] = useState<Session | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
@@ -71,7 +75,8 @@ export default function Sessions() {
     return nums.length > 0 ? Math.max(...nums) + 1 : 1
   }, [sessions])
 
-  function reload() {
+  async function reload() {
+    await fetchSessions(assemblyId)
     setSessions(getSessionsByAssembly(assemblyId))
   }
 
@@ -97,7 +102,7 @@ export default function Sessions() {
     return cit === 'primera' ? orgSettings.quorum_min_primera : orgSettings.quorum_min_segunda
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     setMsg('')
     setErr('')
     if (!assemblyId) { setErr('No hay asamblea seleccionada'); return }
@@ -109,7 +114,7 @@ export default function Sessions() {
     const quorumReq = getQuorumRequired(citation)
     const quorumMet = citation === 'segunda' || attendees.length >= quorumReq
 
-    saveSession({
+    await saveSession({
       assembly_id: assemblyId,
       number: nextNumber,
       citation,
@@ -128,20 +133,19 @@ export default function Sessions() {
     setAttendeesInput('')
     setConvocante(orgSettings.president || '')
     setAgendaItems([])
-    reload()
+    await reload()
     setTimeout(() => setDrawerOpen(false), 800)
   }
 
-  function handleStart(s: Session) {
-    // Re-check quorum at start time
+  async function handleStart(s: Session) {
     const quorumMet = s.citation === 'segunda' || s.attendees.length >= s.quorum_required
-    updateSession(s.id, { status: 'en_curso', started_at: new Date().toISOString(), quorum_met: quorumMet })
-    reload()
+    await updateSession(s.id, { status: 'en_curso', started_at: new Date().toISOString(), quorum_met: quorumMet })
+    await reload()
   }
 
   async function handleClose(s: Session) {
     const now = new Date().toISOString()
-    updateSession(s.id, { status: 'cerrada', closed_at: now })
+    await updateSession(s.id, { status: 'cerrada', closed_at: now })
     // Auto-generate acta with all legally required fields
     if (assembly) {
       try {
@@ -189,15 +193,15 @@ export default function Sessions() {
           setErr(`Acta no generada: ${(e as Error).message || 'error desconocido'}`)
         }
     }
-    reload()
+    await reload()
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     try {
-      deleteSession(id)
+      await deleteSession(id)
       setConfirmDelete(null)
       setSelected(null)
-      reload()
+      await reload()
     } catch (e: unknown) {
       setErr((e as Error).message)
       setConfirmDelete(null)

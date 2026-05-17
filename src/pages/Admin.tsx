@@ -2,9 +2,9 @@ import { useState, useEffect } from 'react'
 import {
   getOrgSettings,
   saveOrgSettings,
-  getAssemblies,
-  getSessions,
-  getActas,
+  fetchAssemblies,
+  fetchSessions,
+  fetchActas,
   type OrgSettings,
 } from '../lib/store'
 import { getProposals, getHealth, createChannel } from '../lib/api'
@@ -20,9 +20,9 @@ export default function Admin() {
   }, [])
 
   async function loadStats() {
-    const assemblies = getAssemblies().length
-    const sessions = getSessions().length
-    const actas = getActas().length
+    const assemblies = (await fetchAssemblies()).length
+    const sessions = (await fetchSessions()).length
+    const actas = (await fetchActas()).length
     let elections = 0
     let healthy = false
     try {

@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import {
-  getAssemblies,
+  fetchAssemblies,
   saveAssembly,
   deleteAssembly,
   getSessionsByAssembly,
@@ -22,8 +22,10 @@ const TYPE_COLORS: Record<string, string> = {
 
 export default function Assemblies() {
   const nav = useNavigate()
-  const [assemblies, setAssemblies] = useState<Assembly[]>(getAssemblies)
+  const [assemblies, setAssemblies] = useState<Assembly[]>([])
   const [drawerOpen, setDrawerOpen] = useState(false)
+
+  useEffect(() => { fetchAssemblies().then(setAssemblies) }, [])
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
 
   // Form
@@ -37,11 +39,11 @@ export default function Assemblies() {
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
 
-  function reload() {
-    setAssemblies(getAssemblies())
+  async function reload() {
+    setAssemblies(await fetchAssemblies())
   }
 
-  function handleCreate() {
+  async function handleCreate() {
     setMsg('')
     setErr('')
     if (!name.trim()) { setErr('El nombre es obligatorio'); return }
@@ -53,7 +55,7 @@ export default function Assemblies() {
     const convWarning = validateConvocatoria({ type, date, convocatoria_date: convocatoriaDate })
     if (convWarning) { setErr(convWarning); return }
 
-    saveAssembly({
+    await saveAssembly({
       name: name.trim(),
       type,
       date,
@@ -69,15 +71,15 @@ export default function Assemblies() {
     setLocation('')
     setDescription('')
     setConvocatoriaDate('')
-    reload()
+    await reload()
     setTimeout(() => setDrawerOpen(false), 800)
   }
 
-  function handleDelete(id: string) {
+  async function handleDelete(id: string) {
     try {
-      deleteAssembly(id)
+      await deleteAssembly(id)
       setConfirmDelete(null)
-      reload()
+      await reload()
     } catch (e: unknown) {
       setErr((e as Error).message)
       setConfirmDelete(null)
