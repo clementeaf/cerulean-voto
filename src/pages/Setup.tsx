@@ -18,7 +18,7 @@ import {
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
-// Note: pPass is reused as the name/label field in Step 3 (not a passphrase there)
+import { authConnect } from '../lib/auth'
 import { createChannel, registerIdentity, submitProposal } from '../lib/api'
 
 const STEPS = [
@@ -108,8 +108,8 @@ export default function Setup() {
       }
       setAdminWallet(extWallet)
       setAdminDid(did)
-      // Cache locally
       storeWallet('', extWallet)
+      authConnect(did, address, publicKey)
       setParticipants(getStoredWallets())
       setStep(2)
     } catch (e: unknown) {
@@ -130,6 +130,7 @@ export default function Setup() {
       const { walletFile, did } = await createAndRegisterWallet(adminPass)
       setAdminWallet(walletFile)
       setAdminDid(did)
+      authConnect(did, walletFile.address, walletFile.public_key)
       setParticipants(getStoredWallets())
       setStep(2)
     } catch (e: unknown) {
@@ -160,7 +161,9 @@ export default function Setup() {
       }
 
       setAdminWallet(result.walletFile)
-      setAdminDid(didFromWallet(result.walletFile))
+      const did = didFromWallet(result.walletFile)
+      setAdminDid(did)
+      authConnect(did, result.walletFile.address, result.walletFile.public_key)
       setParticipants(getStoredWallets())
       setStep(2)
     } catch (e: unknown) {

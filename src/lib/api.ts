@@ -16,8 +16,8 @@ function readLocalConfig(key: string): Record<string, unknown> | null {
   }
 }
 
-// Paths that don't require authentication
-const PUBLIC_PATHS = ['/health', '/channels'];
+// Paths that don't require authentication (bootstrap: identity, vault, health, channels)
+const PUBLIC_PATHS = ['/health', '/channels', '/store/identities', '/vault'];
 
 // Inject X-Org-Id, X-Msp-Role, X-Channel-Id on every request
 // Block non-public requests when not authenticated
@@ -196,6 +196,12 @@ export async function vaultGet(did: string): Promise<{ did: string; encrypted_wa
   }
 }
 
+// -- Helpers ----------------------------------------------------------------
+
+function uid(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
 // -- Store: Scopes ----------------------------------------------------------
 
 export async function apiGetScopes(): Promise<Scope[]> {
@@ -209,12 +215,15 @@ export async function apiGetScope(id: string): Promise<Scope> {
 }
 
 export async function apiCreateScope(scope: Omit<Scope, 'id' | 'created_at'>): Promise<Scope> {
-  const { data } = await client.post('/store/scopes', scope);
+  const body = { ...scope, id: uid(), created_at: Date.now() };
+  const { data } = await client.post('/store/scopes', body);
   return unwrap<Scope>(data);
 }
 
-export async function apiUpdateScope(id: string, scope: Partial<Scope>): Promise<Scope> {
-  const { data } = await client.put(`/store/scopes/${encodeURIComponent(id)}`, scope);
+export async function apiUpdateScope(id: string, patch: Partial<Scope>): Promise<Scope> {
+  const current = await apiGetScope(id);
+  const merged = { ...current, ...patch };
+  const { data } = await client.put(`/store/scopes/${encodeURIComponent(id)}`, merged);
   return unwrap<Scope>(data);
 }
 
@@ -223,26 +232,41 @@ export async function apiDeleteScope(id: string): Promise<void> {
 }
 
 // -- Store: Assemblies ------------------------------------------------------
+// Backend uses `assembly_type`, frontend uses `type` — map at boundary
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function fromApiAssembly(raw: any): Assembly {
+  const { assembly_type, ...rest } = raw;
+  return { ...rest, type: assembly_type ?? rest.type };
+}
+
+function toApiAssembly(a: Record<string, unknown>): Record<string, unknown> {
+  const { type, ...rest } = a;
+  return { ...rest, assembly_type: type };
+}
 
 export async function apiGetAssemblies(scopeId?: string): Promise<Assembly[]> {
   const params = scopeId ? { scope_id: scopeId } : undefined;
   const { data } = await client.get('/store/assemblies', { params });
-  return unwrap<Assembly[]>(data);
+  return unwrap<unknown[]>(data).map(fromApiAssembly);
 }
 
 export async function apiGetAssembly(id: string): Promise<Assembly> {
   const { data } = await client.get(`/store/assemblies/${encodeURIComponent(id)}`);
-  return unwrap<Assembly>(data);
+  return fromApiAssembly(unwrap(data));
 }
 
 export async function apiCreateAssembly(assembly: Omit<Assembly, 'id' | 'created_at' | 'folio'>): Promise<Assembly> {
-  const { data } = await client.post('/store/assemblies', assembly);
-  return unwrap<Assembly>(data);
+  const body = toApiAssembly({ ...assembly, id: uid(), folio: Date.now() % 100000, created_at: Date.now() } as unknown as Record<string, unknown>);
+  const { data } = await client.post('/store/assemblies', body);
+  return fromApiAssembly(unwrap(data));
 }
 
-export async function apiUpdateAssembly(id: string, assembly: Partial<Assembly>): Promise<Assembly> {
-  const { data } = await client.put(`/store/assemblies/${encodeURIComponent(id)}`, assembly);
-  return unwrap<Assembly>(data);
+export async function apiUpdateAssembly(id: string, patch: Partial<Assembly>): Promise<Assembly> {
+  const current = await apiGetAssembly(id);
+  const merged = { ...current, ...patch };
+  const { data } = await client.put(`/store/assemblies/${encodeURIComponent(id)}`, toApiAssembly(merged as unknown as Record<string, unknown>));
+  return fromApiAssembly(unwrap(data));
 }
 
 export async function apiDeleteAssembly(id: string): Promise<void> {
@@ -263,12 +287,16 @@ export async function apiGetSession(id: string): Promise<Session> {
 }
 
 export async function apiCreateSession(session: Omit<Session, 'id'>): Promise<Session> {
-  const { data } = await client.post('/store/sessions', session);
+  const body = { ...session, id: uid() };
+  const { data } = await client.post('/store/sessions', body);
   return unwrap<Session>(data);
 }
 
-export async function apiUpdateSession(id: string, session: Partial<Session>): Promise<Session> {
-  const { data } = await client.put(`/store/sessions/${encodeURIComponent(id)}`, session);
+export async function apiUpdateSession(id: string, patch: Partial<Session>): Promise<Session> {
+  // Backend PUT requires full object — fetch current, merge, then put
+  const current = await apiGetSession(id);
+  const merged = { ...current, ...patch };
+  const { data } = await client.put(`/store/sessions/${encodeURIComponent(id)}`, merged);
   return unwrap<Session>(data);
 }
 
@@ -289,12 +317,18 @@ export async function apiGetActa(id: string): Promise<Acta> {
 }
 
 export async function apiCreateActa(acta: Omit<Acta, 'id' | 'generated_at' | 'folio' | 'integrity_hash'>): Promise<Acta> {
-  const { data } = await client.post('/store/actas', acta);
+  const contentJson = JSON.stringify(acta.content);
+  const hashBuf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(contentJson));
+  const integrity_hash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('');
+  const body = { ...acta, id: uid(), folio: Date.now() % 100000, generated_at: Date.now(), integrity_hash };
+  const { data } = await client.post('/store/actas', body);
   return unwrap<Acta>(data);
 }
 
-export async function apiUpdateActa(id: string, acta: Partial<Acta>): Promise<Acta> {
-  const { data } = await client.put(`/store/actas/${encodeURIComponent(id)}`, acta);
+export async function apiUpdateActa(id: string, patch: Partial<Acta>): Promise<Acta> {
+  const current = await apiGetActa(id);
+  const merged = { ...current, ...patch };
+  const { data } = await client.put(`/store/actas/${encodeURIComponent(id)}`, merged);
   return unwrap<Acta>(data);
 }
 
