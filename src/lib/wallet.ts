@@ -99,13 +99,40 @@ export async function signVote(
   return sign_transaction(walletJson, passphrase, payloadHex)
 }
 
-// -- Local cache (localStorage = cache, vault = source of truth) -------------
+/** Prompt for passphrase ephemerally — never stored in component state.
+ *  Returns null if user cancels. */
+export function promptPassphrase(label = 'Ingresa la clave de tu wallet'): string | null {
+  return window.prompt(label)
+}
+
+/** Sign a vote with ephemeral passphrase prompt. Returns null if cancelled. */
+export async function signVoteWithPrompt(
+  walletFile: WalletFile,
+  payload: { proposal_id: number; option: string },
+): Promise<string | null> {
+  const pass = promptPassphrase()
+  if (!pass) return null
+  try {
+    return await signVote(walletFile, pass, payload)
+  } finally {
+    // pass is a local variable — goes out of scope here, no zeroing needed
+    // but we ensure it's never assigned to any persistent reference
+  }
+}
+
+/** Verify passphrase by signing a test payload. Throws on wrong passphrase. */
+export async function verifyPassphrase(walletFile: WalletFile, passphrase: string): Promise<void> {
+  await signVote(walletFile, passphrase, { proposal_id: 0, option: 'auth-verify' })
+}
+
+// -- Local cache (sessionStorage — dies with tab, vault = source of truth) ----
 
 const CACHE_KEY = 'cv_wallets'
 
 function readCache(): StoredWallet[] {
   try {
-    const raw = localStorage.getItem(CACHE_KEY)
+    // sessionStorage — wallet keys die with the tab. Vault is source of truth.
+    const raw = sessionStorage.getItem(CACHE_KEY)
     return raw ? JSON.parse(raw) as StoredWallet[] : []
   } catch {
     return []
@@ -113,7 +140,21 @@ function readCache(): StoredWallet[] {
 }
 
 function writeCache(wallets: StoredWallet[]): void {
-  localStorage.setItem(CACHE_KEY, JSON.stringify(wallets))
+  sessionStorage.setItem(CACHE_KEY, JSON.stringify(wallets))
+}
+
+/** Migrate any wallets left in localStorage from pre-0.2.0 into sessionStorage, then wipe localStorage copy. */
+export function migrateWalletCache(): void {
+  try {
+    const legacy = localStorage.getItem(CACHE_KEY)
+    if (legacy) {
+      const existing = readCache()
+      if (existing.length === 0) {
+        sessionStorage.setItem(CACHE_KEY, legacy)
+      }
+      localStorage.removeItem(CACHE_KEY)
+    }
+  } catch { /* ignore */ }
 }
 
 function cacheWallet(name: string, walletFile: WalletFile): StoredWallet {

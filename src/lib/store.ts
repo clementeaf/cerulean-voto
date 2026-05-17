@@ -133,6 +133,35 @@ function writeLocal<T>(key: string, value: T): void {
   localStorage.setItem(`cv_${key}`, JSON.stringify(value))
 }
 
+// ── Input validation ────────────────────────────────────────────────────
+
+function requireString(value: unknown, field: string): string {
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`Campo obligatorio: ${field}`)
+  }
+  return value.trim()
+}
+
+function requireEnum<T extends string>(value: unknown, field: string, allowed: readonly T[]): T {
+  if (typeof value !== 'string' || !allowed.includes(value as T)) {
+    throw new Error(`${field} debe ser uno de: ${allowed.join(', ')}`)
+  }
+  return value as T
+}
+
+function requireArray(value: unknown, field: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`${field} debe ser un arreglo`)
+  }
+  return value
+}
+
+const SCOPE_ROLES = ['admin', 'voter', 'observer'] as const
+const ASSEMBLY_TYPES = ['ordinaria', 'extraordinaria'] as const
+const CITATION_TYPES = ['primera', 'segunda'] as const
+const SESSION_STATUSES = ['planificada', 'en_curso', 'cerrada'] as const
+const CONV_METHODS = ['personal', 'publicacion', 'correo_electronico', 'otro'] as const
+
 // ── In-memory cache ─────────────────────────────────────────────────────
 // Populated by fetch* calls, read synchronously by permissions engine
 
@@ -165,6 +194,10 @@ export function getScopesByMember(did: string): Scope[] {
 }
 
 export async function saveScope(s: Omit<Scope, 'id' | 'created_at'>): Promise<Scope> {
+  requireString(s.name, 'nombre')
+  requireString(s.label, 'tipo de unidad')
+  requireString(s.channel_id, 'channel_id')
+  requireArray(s.members, 'members')
   const created = await apiCreateScope(s)
   _scopes = [..._scopes, created]
   return created
@@ -185,6 +218,9 @@ export async function deleteScope(id: string): Promise<void> {
 }
 
 export async function addScopeMember(scopeId: string, member: ScopeMember): Promise<void> {
+  requireString(member.did, 'DID del miembro')
+  requireString(member.name, 'nombre del miembro')
+  requireEnum(member.role, 'rol', SCOPE_ROLES)
   const scope = getScope(scopeId)
   if (!scope) throw new Error('Scope no encontrado')
   if (scope.members.some((m) => m.did === member.did)) {
@@ -241,6 +277,11 @@ export function getAssemblies(scopeId?: string): Assembly[] {
 }
 
 export async function saveAssembly(a: Omit<Assembly, 'id' | 'created_at' | 'folio'>): Promise<Assembly> {
+  requireString(a.name, 'nombre de asamblea')
+  requireEnum(a.type, 'tipo', ASSEMBLY_TYPES)
+  requireString(a.date, 'fecha')
+  requireString(a.location, 'lugar')
+  requireEnum(a.convocatoria_method, 'metodo de convocatoria', CONV_METHODS)
   const created = await apiCreateAssembly(a)
   _assemblies = [created, ..._assemblies]
   return created
@@ -293,6 +334,14 @@ export function getSessionsByAssembly(assemblyId: string): Session[] {
 }
 
 export async function saveSession(s: Omit<Session, 'id'>): Promise<Session> {
+  requireString(s.assembly_id, 'assembly_id')
+  requireEnum(s.citation, 'citacion', CITATION_TYPES)
+  requireEnum(s.status, 'estado', SESSION_STATUSES)
+  requireArray(s.agenda, 'agenda')
+  requireArray(s.attendees, 'asistentes')
+  if (typeof s.quorum_required !== 'number' || s.quorum_required < 0) {
+    throw new Error('quorum_required debe ser un numero >= 0')
+  }
   const created = await apiCreateSession(s)
   _sessions = [created, ..._sessions]
   return created
@@ -322,6 +371,14 @@ export function getActas(): Acta[] {
 }
 
 export async function saveActa(a: Omit<Acta, 'id' | 'generated_at' | 'folio' | 'integrity_hash'>): Promise<Acta> {
+  requireString(a.session_id, 'session_id')
+  requireString(a.assembly_id, 'assembly_id')
+  if (!a.content || typeof a.content !== 'object') {
+    throw new Error('contenido del acta es obligatorio')
+  }
+  requireString(a.content.assembly_name, 'nombre de asamblea en acta')
+  requireArray(a.content.attendees, 'asistentes en acta')
+  requireArray(a.content.agenda, 'agenda en acta')
   const created = await apiCreateActa(a)
   _actas = [created, ..._actas]
   return created

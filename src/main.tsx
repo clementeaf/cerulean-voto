@@ -4,6 +4,10 @@ import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import './index.css'
 import Layout from './components/Layout'
 import { routes } from './lib/routes'
+import { migrateWalletCache } from './lib/wallet'
+
+// Migrate wallet keys from localStorage → sessionStorage (one-time, clears legacy)
+migrateWalletCache()
 
 const Landing = lazy(() => import('./pages/Landing'))
 const Setup = lazy(() => import('./pages/Setup'))

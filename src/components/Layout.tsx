@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { routes } from '../lib/routes'
 import { getActiveScope, getScope, getOrgSettings } from '../lib/store'
 import { getAuth, isAuthenticated, authConnect, authDisconnect, authRefreshRole, onAuthChange } from '../lib/auth'
-import { getStoredWallets, didFromWallet, signVote, didFromAddress } from '../lib/wallet'
+import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress } from '../lib/wallet'
 
 function useAuth() {
   const [, setTick] = useState(0)
@@ -38,13 +38,13 @@ function AuthGate() {
 
     setLoading(true)
     try {
-      // Verify passphrase by signing a test payload
-      await signVote(wallet.walletFile, passphrase, { proposal_id: 0, option: 'auth-verify' })
+      await verifyPassphrase(wallet.walletFile, passphrase)
       const did = didFromWallet(wallet.walletFile)
       authConnect(did, wallet.walletFile.address, wallet.walletFile.public_key)
     } catch {
       setErr('Clave incorrecta — no se pudo descifrar la wallet')
     } finally {
+      setPassphrase('') // Zero passphrase immediately after use
       setLoading(false)
     }
   }

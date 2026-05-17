@@ -259,15 +259,15 @@ describe('Assemblies', () => {
   })
 
   it('getAssemblies filters by scope from cache', async () => {
-    await saveAssembly({ name: 'A', type: 'ordinaria', date: '2024-01-01', location: '', description: '', convocatoria_date: '', convocatoria_method: 'personal', scope_id: 's1' })
-    await saveAssembly({ name: 'B', type: 'ordinaria', date: '2024-01-01', location: '', description: '', convocatoria_date: '', convocatoria_method: 'personal', scope_id: 's2' })
+    await saveAssembly({ name: 'A', type: 'ordinaria', date: '2024-01-01', location: 'Sala 1', description: '', convocatoria_date: '2023-12-20', convocatoria_method: 'personal', scope_id: 's1' })
+    await saveAssembly({ name: 'B', type: 'ordinaria', date: '2024-01-01', location: 'Sala 2', description: '', convocatoria_date: '2023-12-20', convocatoria_method: 'personal', scope_id: 's2' })
 
     expect(getAssemblies('s1')).toHaveLength(1)
     expect(getAssemblies()).toHaveLength(2)
   })
 
   it('deleteAssembly removes from cache with sessions', async () => {
-    const a = await saveAssembly({ name: 'A', type: 'ordinaria', date: '2024-01-01', location: '', description: '', convocatoria_date: '', convocatoria_method: 'personal', scope_id: 's1' })
+    const a = await saveAssembly({ name: 'A', type: 'ordinaria', date: '2024-01-01', location: 'Sala 1', description: '', convocatoria_date: '2023-12-20', convocatoria_method: 'personal', scope_id: 's1' })
     await saveSession({ assembly_id: a.id, number: 1, citation: 'primera', status: 'planificada', started_at: null, closed_at: null, agenda: [], attendees: [], quorum_required: 50, quorum_met: false, notes: '', convocante: '' })
 
     await deleteAssembly(a.id)
@@ -323,7 +323,7 @@ describe('Sessions', () => {
     const s = await saveSession({ assembly_id: 'a1', number: 1, citation: 'primera', status: 'cerrada', started_at: null, closed_at: null, agenda: [], attendees: [], quorum_required: 50, quorum_met: false, notes: '', convocante: '' })
     await saveActa({
       session_id: s.id, assembly_id: 'a1',
-      content: { org_name: '', org_rut: '', assembly_name: '', assembly_type: '', assembly_folio: 1, convocatoria_date: '', convocatoria_method: '', session_number: 1, citation: '', date: '', location: '', quorum_required: 50, attendees_count: 0, quorum_met: false, attendees: [], agenda: [], notes: '', started_at: null, closed_at: null, president: '', secretary: '' },
+      content: { org_name: 'Org', org_rut: '1-1', assembly_name: 'Test', assembly_type: 'ordinaria', assembly_folio: 1, convocatoria_date: '2024-01-01', convocatoria_method: 'personal', session_number: 1, citation: 'primera', date: '2024-06-01', location: 'Sala', quorum_required: 50, attendees_count: 0, quorum_met: false, attendees: ['A'], agenda: [{ id: '1', title: 'P1', type: 'informativo', resolved: false, resolution: '' }], notes: '', started_at: null, closed_at: null, president: 'P', secretary: 'S' },
     })
     await expect(deleteSession(s.id)).rejects.toThrow('ISO 15489')
   })
@@ -346,7 +346,7 @@ describe('Actas', () => {
   it('updateActaBlockchainTx sets tx in cache', async () => {
     const acta = await saveActa({
       session_id: 's1', assembly_id: 'a1',
-      content: { org_name: '', org_rut: '', assembly_name: '', assembly_type: '', assembly_folio: 1, convocatoria_date: '', convocatoria_method: '', session_number: 1, citation: '', date: '', location: '', quorum_required: 0, attendees_count: 0, quorum_met: false, attendees: [], agenda: [], notes: '', started_at: null, closed_at: null, president: '', secretary: '' },
+      content: { org_name: 'Org', org_rut: '1-1', assembly_name: 'Test', assembly_type: 'ordinaria', assembly_folio: 1, convocatoria_date: '2024-01-01', convocatoria_method: 'personal', session_number: 1, citation: 'primera', date: '2024-06-01', location: 'Sala', quorum_required: 0, attendees_count: 0, quorum_met: false, attendees: ['A'], agenda: [{ id: '1', title: 'P1', type: 'informativo', resolved: false, resolution: '' }], notes: '', started_at: null, closed_at: null, president: 'P', secretary: 'S' },
     })
     await updateActaBlockchainTx(acta.id, 'tx-abc-123')
     const found = getActas().find(a => a.id === acta.id)

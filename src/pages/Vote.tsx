@@ -7,13 +7,8 @@ import {
   type TallyResult,
 } from '../lib/api'
 import { pct } from '../lib/format'
-import {
-  getStoredWallets,
-  findWalletByName,
-  didFromWallet,
-  signVote,
-  type StoredWallet,
-} from '../lib/wallet'
+import { signVoteWithPrompt } from '../lib/wallet'
+import { getAuth } from '../lib/auth'
 
 interface VoteReceipt {
   proposalId: number
@@ -38,16 +33,12 @@ const GUARANTEES = [
 export default function Vote() {
   const [proposals, setProposals] = useState<Proposal[]>([])
   const [tallies, setTallies] = useState<Record<number, TallyResult>>({})
-  const [voterName, setVoterName] = useState('')
-  const [passphrase, setPassphrase] = useState('')
   const [err, setErr] = useState('')
   const [receipt, setReceipt] = useState<VoteReceipt | null>(null)
   const [visibleChecks, setVisibleChecks] = useState(0)
   const [signing, setSigning] = useState(false)
 
-  const storedWallets = getStoredWallets()
-  const selectedWallet: StoredWallet | undefined = findWalletByName(voterName)
-  const hasWallet = !!selectedWallet
+  const auth = getAuth()
   const optionLabels: Record<string, string> = { Yes: 'A favor', No: 'En contra', Abstain: 'Abstencion' }
 
   useEffect(() => { load() }, [])
@@ -74,23 +65,30 @@ export default function Vote() {
 
   async function handleVote(proposalId: number, option: 'Yes' | 'No' | 'Abstain') {
     setErr(''); setReceipt(null)
-    if (!selectedWallet) { setErr('Selecciona tu wallet'); return }
-    if (!passphrase) { setErr('Ingresa la clave de tu wallet'); return }
+    if (!auth) { setErr('No autenticado'); return }
+
+    // Find wallet for the authenticated user
+    const { findWalletByDid } = await import('../lib/wallet')
+    const wallet = findWalletByDid(auth.did)
+    if (!wallet) { setErr('Wallet no encontrada'); return }
+
+    // Ephemeral passphrase — prompted, used, discarded. Never in React state.
+    const signature = await signVoteWithPrompt(wallet.walletFile, { proposal_id: proposalId, option })
+    if (!signature) return // user cancelled
 
     setSigning(true)
     try {
-      const signature = await signVote(selectedWallet.walletFile, passphrase, { proposal_id: proposalId, option })
-      const voterDid = didFromWallet(selectedWallet.walletFile)
+      const voterDid = auth.did
 
       const res = await castVote(proposalId, {
         voter: voterDid, option, power: 1,
-        signature, public_key: selectedWallet.walletFile.public_key,
+        signature, public_key: auth.publicKey,
       })
       const tally = res?.data
       if (tally) setTallies((prev) => ({ ...prev, [proposalId]: tally }))
 
       const proposal = proposals.find((p) => p.id === proposalId)
-      const payloadMsg = `vote:${proposalId}:${option}:${selectedWallet.walletFile.public_key}`
+      const payloadMsg = `vote:${proposalId}:${option}:${auth.publicKey}`
       const payloadBytes = new TextEncoder().encode(payloadMsg)
       const hashBuf = await crypto.subtle.digest('SHA-256', payloadBytes)
       const payloadHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -100,7 +98,7 @@ export default function Vote() {
         description: proposal?.description || `Eleccion #${proposalId}`,
         option: optionLabels[option],
         voterDid,
-        voterAddress: selectedWallet.walletFile.address,
+        voterAddress: auth.address,
         signature,
         payloadHash,
         traceId: res?.trace_id ?? '',
@@ -125,39 +123,17 @@ export default function Vote() {
       <div className="bg-white rounded-lg border border-neutral-100 px-3 py-2 mb-3 shrink-0">
         <div className="flex items-center gap-2">
           <label className="text-xs text-neutral-400 shrink-0">Votante:</label>
-          <select
-            className="flex-1 min-w-0 rounded border border-neutral-200 px-2 py-1.5 text-sm"
-            value={voterName} onChange={(e) => setVoterName(e.target.value)}
-          >
-            <option value="">Selecciona tu wallet</option>
-            {storedWallets.map((w) => (
-              <option key={w.walletFile.address} value={w.name}>{w.name}</option>
-            ))}
-          </select>
-          {hasWallet && (
-            <input
-              type="password"
-              className="w-40 rounded border border-neutral-200 px-2 py-1.5 text-sm"
-              value={passphrase} onChange={(e) => setPassphrase(e.target.value)}
-              placeholder="Clave wallet"
-            />
-          )}
-          {hasWallet && passphrase && (
-            <span className="text-[10px] text-green-600 shrink-0 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
-              Listo para firmar
-            </span>
-          )}
-          {hasWallet && !passphrase && (
-            <span className="text-[10px] text-amber-500 shrink-0">Ingresa clave</span>
-          )}
-          {!voterName && <span className="text-[10px] text-neutral-300 shrink-0">Selecciona tu wallet del padron</span>}
+          <span className="text-[10px] text-green-600 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+            Wallet conectada
+          </span>
+          <span className="text-[10px] text-neutral-400 shrink-0">La clave se solicita al momento de firmar</span>
         </div>
-        {hasWallet && (
+        {auth && (
           <div className="flex items-center gap-3 mt-1.5 text-[10px] text-neutral-400">
-            <span>DID: <span className="font-mono">{didFromWallet(selectedWallet!.walletFile).slice(0, 30)}...</span></span>
-            <span>Address: <span className="font-mono">{selectedWallet!.walletFile.address.slice(0, 12)}...</span></span>
-            <span>Algoritmo: {selectedWallet!.walletFile.algorithm.toUpperCase()}</span>
+            <span>DID: <span className="font-mono">{auth.did.slice(0, 30)}...</span></span>
+            <span>Address: <span className="font-mono">{auth.address.slice(0, 12)}...</span></span>
+            <span>Rol: {auth.role}</span>
           </div>
         )}
       </div>
@@ -173,7 +149,7 @@ export default function Vote() {
         ) : (
           proposals.map((p) => {
             const tally = tallies[p.id]
-            const canVote = hasWallet && passphrase.length > 0 && !signing
+            const canVote = !!auth && !signing
             return (
               <section key={p.id} className="bg-white rounded-lg border border-neutral-100 p-3">
                 <div className="flex items-center justify-between gap-3">
