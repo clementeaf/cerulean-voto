@@ -40,7 +40,7 @@ function AuthGate() {
     try {
       await verifyPassphrase(wallet.walletFile, passphrase)
       const did = didFromWallet(wallet.walletFile)
-      authConnect(did, wallet.walletFile.address, wallet.walletFile.public_key)
+      authConnect(did, wallet.walletFile.address, wallet.walletFile.public_key, 'vault')
     } catch {
       setErr('Clave incorrecta — no se pudo descifrar la wallet')
     } finally {
@@ -58,7 +58,7 @@ function AuthGate() {
       if (!cerulean) { setErr('Extension no detectada'); return }
       const { address, publicKey } = await cerulean.connect()
       const did = didFromAddress(address)
-      authConnect(did, address, publicKey)
+      authConnect(did, address, publicKey, 'extension')
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error al conectar extension')
     } finally {

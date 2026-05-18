@@ -107,7 +107,7 @@ export default function Setup() {
       setAdminWallet(extWallet)
       setAdminDid(did)
       storeWallet('', extWallet)
-      authConnect(did, address, publicKey)
+      authConnect(did, address, publicKey, 'extension')
       setParticipants(getStoredWallets())
       setStep(2)
     } catch (e: unknown) {

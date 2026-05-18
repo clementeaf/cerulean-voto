@@ -67,17 +67,34 @@ export default function Vote() {
     setErr(''); setReceipt(null)
     if (!auth) { setErr('No autenticado'); return }
 
-    // Find wallet for the authenticated user
-    const { findWalletByDid } = await import('../lib/wallet')
-    const wallet = findWalletByDid(auth.did)
-    if (!wallet) { setErr('Wallet no encontrada'); return }
-
-    // Generate nonce to salt the blind voter ID — prevents reverse-mapping
     const nonce = generateVoteNonce()
+    let signature: string
+    let publicKey = auth.publicKey
 
-    // Ephemeral passphrase — prompted, used, discarded. Never in React state.
-    const signature = await signVoteWithPrompt(wallet.walletFile, { proposal_id: proposalId, option, nonce })
-    if (!signature) return // user cancelled
+    if (auth.source === 'extension') {
+      // Delegate signing to Chrome extension — passphrase handled in extension popup
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const cerulean = (window as any).cerulean
+      if (!cerulean?.signVote) { setErr('Extension no disponible para firmar'); return }
+      try {
+        const result = await cerulean.signVote(proposalId, option)
+        signature = result.signature
+        publicKey = result.public_key || publicKey
+      } catch (e: unknown) {
+        const msg = (e as Error)?.message || 'Firma cancelada'
+        setErr(msg)
+        return
+      }
+    } else {
+      // Vault-imported wallet — sign locally with WASM + ephemeral passphrase prompt
+      const { findWalletByDid } = await import('../lib/wallet')
+      const wallet = findWalletByDid(auth.did)
+      if (!wallet) { setErr('Wallet no encontrada'); return }
+
+      const sig = await signVoteWithPrompt(wallet.walletFile, { proposal_id: proposalId, option, nonce })
+      if (!sig) return // user cancelled
+      signature = sig
+    }
 
     setSigning(true)
     try {
@@ -85,14 +102,14 @@ export default function Vote() {
 
       const res = await castVote(proposalId, {
         voter: voterDid, option, power: 1,
-        signature, public_key: auth.publicKey,
+        signature, public_key: publicKey,
         nonce,
       })
       const tally = res?.data
       if (tally) setTallies((prev) => ({ ...prev, [proposalId]: tally }))
 
       const proposal = proposals.find((p) => p.id === proposalId)
-      const payloadMsg = `vote:${proposalId}:${option}:${auth.publicKey}:${nonce}`
+      const payloadMsg = `vote:${proposalId}:${option}:${publicKey}:${nonce}`
       const payloadBytes = new TextEncoder().encode(payloadMsg)
       const hashBuf = await crypto.subtle.digest('SHA-256', payloadBytes)
       const payloadHash = Array.from(new Uint8Array(hashBuf)).map(b => b.toString(16).padStart(2, '0')).join('')
@@ -110,10 +127,10 @@ export default function Vote() {
       })
       animateChecks()
     } catch (e: unknown) {
-      const msg = (e as Error)?.message || 'Error al votar'
-      if (msg.includes('decryption failed')) setErr('Clave incorrecta — no se pudo descifrar la wallet')
-      else if (msg.includes('already voted')) setErr('Ya votaste en esta eleccion')
-      else setErr(msg)
+      const errMsg = (e as Error)?.message || 'Error al votar'
+      if (errMsg.includes('decryption failed')) setErr('Clave incorrecta — no se pudo descifrar la wallet')
+      else if (errMsg.includes('already voted')) setErr('Ya votaste en esta eleccion')
+      else setErr(errMsg)
     } finally {
       setSigning(false)
     }

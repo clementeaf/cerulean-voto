@@ -3,11 +3,14 @@
 
 import { getOrgSettings, getActiveScope, getRoleInScope, type ScopeMember } from './store'
 
+export type AuthSource = 'extension' | 'vault' | 'address-only'
+
 export interface AuthState {
   did: string
   address: string
   publicKey: string
   role: MspRole
+  source: AuthSource
 }
 
 // Roles the backend understands in strict mode
@@ -49,12 +52,13 @@ function deriveRole(did: string): MspRole {
 }
 
 /** Connect a verified wallet. Call only after passphrase verification. */
-export function authConnect(did: string, address: string, publicKey: string): void {
+export function authConnect(did: string, address: string, publicKey: string, source: AuthSource = 'vault'): void {
   _auth = {
     did,
     address,
     publicKey,
     role: deriveRole(did),
+    source,
   }
   notify()
 }
