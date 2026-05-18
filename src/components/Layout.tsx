@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { routes } from '../lib/routes'
 import { getActiveScope, getScope, getOrgSettings } from '../lib/store'
 import { getAuth, isAuthenticated, authConnect, authDisconnect, authRefreshRole, onAuthChange } from '../lib/auth'
-import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress } from '../lib/wallet'
+import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress, verifyAddressDerivation } from '../lib/wallet'
 
 function useAuth() {
   const [, setTick] = useState(0)
@@ -57,6 +57,9 @@ function AuthGate() {
       const cerulean = (window as any).cerulean
       if (!cerulean) { setErr('Extension no detectada'); return }
       const { address, publicKey } = await cerulean.connect()
+      // Verify the extension isn't lying about the identity
+      const valid = await verifyAddressDerivation(publicKey, address)
+      if (!valid) { setErr('Extension no verificada — la clave publica no corresponde a la direccion'); return }
       const did = didFromAddress(address)
       authConnect(did, address, publicKey, 'extension')
     } catch (e: unknown) {

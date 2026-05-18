@@ -89,6 +89,10 @@ export default function Setup() {
       if (!cerulean) { setErr('Extension no detectada'); setLoading(false); return }
 
       const { address, publicKey } = await cerulean.connect()
+      // Verify the extension identity
+      const { verifyAddressDerivation } = await import('../lib/wallet')
+      const valid = await verifyAddressDerivation(publicKey, address)
+      if (!valid) { setErr('Extension no verificada — clave publica no corresponde a la direccion'); setLoading(false); return }
       const did = didFromAddress(address)
 
       // Register on-chain if not already

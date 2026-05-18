@@ -63,9 +63,12 @@ export function authConnect(did: string, address: string, publicKey: string, sou
   notify()
 }
 
-/** Disconnect — clears auth state */
+/** Disconnect — clears auth state and wallet cache to minimize XSS exposure */
 export function authDisconnect(): void {
   _auth = null
+  _activeChannel = null
+  // Clear wallet keys from sessionStorage on disconnect
+  try { sessionStorage.removeItem('cv_wallets') } catch { /* ignore */ }
   notify()
 }
 

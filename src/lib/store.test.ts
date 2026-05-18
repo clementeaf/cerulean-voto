@@ -21,6 +21,7 @@ vi.mock('./api', () => ({
   apiDeleteActa: vi.fn().mockResolvedValue(undefined),
 }))
 
+import { authConnect, _resetAuth } from './auth'
 import {
   fetchScopes,
   getScopes,
@@ -77,6 +78,7 @@ function fakeId(): string {
 
 beforeEach(() => {
   _resetCache()
+  _resetAuth()
   localStorage.clear()
   vi.clearAllMocks()
   idCounter = 0
@@ -385,6 +387,8 @@ describe('Permissions', () => {
   const nobodyDid = 'did:cerulean:nobody'
 
   beforeEach(() => {
+    // Authenticate as founder before saving org settings (saveOrgSettings validates founder_did matches auth)
+    authConnect(founderDid, 'founder-addr', 'founder-pub')
     saveOrgSettings({
       org_name: 'Org', rut: '', address: '', president: '', secretary: '',
       quorum_min_primera: 50, quorum_min_segunda: 0,

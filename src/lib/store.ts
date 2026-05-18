@@ -9,7 +9,7 @@ import {
   apiGetSessions, apiCreateSession, apiUpdateSession, apiDeleteSession,
   apiGetActas, apiCreateActa, apiUpdateActa,
 } from './api'
-import { setActiveChannel } from './auth'
+import { setActiveChannel, getAuth } from './auth'
 
 export interface Assembly {
   id: string
@@ -407,6 +407,13 @@ export function getOrgSettings(): OrgSettings {
 }
 
 export function saveOrgSettings(s: OrgSettings): void {
+  // Validate: founder_did can only be set to the currently authenticated user
+  if (s.founder_did) {
+    const auth = getAuth()
+    if (auth && auth.did !== s.founder_did) {
+      throw new Error('founder_did solo puede ser el usuario autenticado')
+    }
+  }
   writeLocal('org_settings', s)
 }
 
@@ -419,10 +426,18 @@ export function saveOrgSettings(s: OrgSettings): void {
 
 export type Permission = 'manage' | 'vote' | 'view'
 
-export function getRoleInScope(did: string, scopeId: string): ScopeMember['role'] | null {
+/** Verified founder check: DID must match org settings AND be the authenticated user.
+ *  Prevents localStorage tampering of founder_did. */
+function isVerifiedFounder(did: string): boolean {
   const org = getOrgSettings()
+  if (!org.founder_did || org.founder_did !== did) return false
+  // Cross-check: the DID claiming founder must be the authenticated user
+  const auth = getAuth()
+  return auth !== null && auth.did === did
+}
 
-  if (org.founder_did && org.founder_did === did) return 'admin'
+export function getRoleInScope(did: string, scopeId: string): ScopeMember['role'] | null {
+  if (isVerifiedFounder(did)) return 'admin'
 
   const scope = getScope(scopeId)
   if (!scope) return null
@@ -457,10 +472,9 @@ export function hasPermission(did: string, scopeId: string, permission: Permissi
 }
 
 export function getAccessibleScopes(did: string): Array<{ scope: Scope; role: ScopeMember['role'] }> {
-  const org = getOrgSettings()
   const allScopes = getScopes()
 
-  if (org.founder_did && org.founder_did === did) {
+  if (isVerifiedFounder(did)) {
     return allScopes.map((scope) => ({ scope, role: 'admin' as const }))
   }
 
@@ -475,8 +489,7 @@ export function getAccessibleScopes(did: string): Array<{ scope: Scope; role: Sc
 }
 
 export function isFounder(did: string): boolean {
-  const org = getOrgSettings()
-  return !!org.founder_did && org.founder_did === did
+  return isVerifiedFounder(did)
 }
 
 // ── Cache reset (for testing) ───────────────────────────────────────────

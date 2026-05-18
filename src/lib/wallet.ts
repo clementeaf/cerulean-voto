@@ -61,6 +61,15 @@ export function didFromWallet(wallet: WalletFile): string {
   return didFromAddress(wallet.address)
 }
 
+/** Verify that a public key derives to the claimed address.
+ *  Catches rogue extensions that claim a mismatched identity. */
+export async function verifyAddressDerivation(publicKey: string, claimedAddress: string): Promise<boolean> {
+  if (!publicKey || !claimedAddress) return false
+  const derived = await didFromPublicKey(publicKey)
+  const derivedAddress = derived.replace('did:cerulean:', '')
+  return derivedAddress === claimedAddress
+}
+
 // -- Vote signing (WASM) ----------------------------------------------------
 
 /** Generate a cryptographic nonce (16 bytes hex) for blind voter ID salt */
