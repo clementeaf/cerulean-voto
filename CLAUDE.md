@@ -5,73 +5,97 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-npm run dev          # Dev server on http://localhost:5174 (proxies /api → local node)
+npm run dev          # Dev server on http://localhost:5174 (proxies /api → node)
 npm run build        # tsc -b && vite build
 npm run lint         # ESLint
-npm run preview      # Preview production build locally
+npm run preview      # Preview production build
 npm test             # Vitest (run once)
 npm run test:watch   # Vitest (watch mode)
 ```
 
-To target a remote node: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com npm run dev`
+Sandbox node runs on port 9600. Set via `.env`: `VITE_API_PROXY_TARGET=http://127.0.0.1:9600`
 
-Requires a Cerulean Ledger node at `http://127.0.0.1:8080` for API calls.
+Production: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com`
 
 ## Architecture
 
-**Multi-tenant on-chain voting platform** for the Cerulean Ledger ecosystem. Spanish-language UI targeting Chilean community organizations (Ley 19.418 compliance).
+**On-chain voting platform** for the Cerulean Ledger ecosystem. Spanish-language UI for Chilean community organizations (Ley 19.418).
 
 ### Data Flow
 
-- **On-chain state** (scopes, assemblies, sessions, actas, governance, identity, vault) → Axios client in `src/lib/api.ts` via `/api/v1` proxy → persisted in Cerulean Ledger (RocksDB)
-- **Local config** (org settings, active scope) → localStorage via `src/lib/store.ts` (keys prefixed `cv_`)
-- **In-memory cache** → `store.ts` module-level variables populated by `fetch*()` calls, read synchronously by permissions engine
-- **Auth state** → `src/lib/auth.ts`, in-memory only (never localStorage)
-- **Crypto** (Ed25519 keypairs, signing) → WASM module in `src/wasm/` loaded by `src/lib/wallet.ts`
+- **On-chain** (scopes, assemblies, sessions, actas, governance, identity, vault) → `src/lib/api.ts` → Cerulean Ledger (RocksDB)
+- **Local config** (org settings, active scope ID) → localStorage (`cv_` prefix)
+- **Cache** → `store.ts` module-level variables, populated by `fetch*()`, read synchronously by permissions engine
+- **Auth** → `src/lib/auth.ts`, in-memory only
+- **Wallet cache** → sessionStorage (dies with tab), vault on-chain is source of truth
+- **Signing** → WASM for vault-imported wallets, Chrome extension for extension-connected wallets
 
 ### Auth Flow
 
-1. User connects wallet in `Layout.tsx` auth gate (passphrase verified via Ed25519 test signature)
-2. `auth.ts` stores DID, address, public key, and derived MSP role in memory
-3. `api.ts` interceptor injects `X-Msp-Role` from auth (admin/member/observer) and blocks unauthenticated requests
-4. `/` (Landing) and `/setup` are standalone routes — no auth required
+1. User connects wallet in Layout auth gate: extension (`window.cerulean`), vault import, or redirect to `wallet.ceruleanledger.com` to create
+2. Extension connections verified: `sha256(publicKey)[0..20] === address`
+3. `auth.ts` stores DID, address, publicKey, role, and source (extension/vault) in memory
+4. Interceptor injects `X-Msp-Role` from auth, blocks unauthenticated requests to protected endpoints
+5. Public paths (no auth needed): `/health`, `/channels`, `/store/identities`, `/vault`
+6. Standalone routes (no auth gate): `/` (Landing), `/setup` (wizard — authenticates after step 1)
 
-### Key Concepts
+### Wallet Integration
 
-- **Scopes**: organizational units forming a tree, each with its own DLT channel and role-based membership (admin/voter/observer)
-- **Permissions**: tree-inherited — founder is root admin everywhere, admin propagates down, voter/observer do not
-- **DID**: `did:cerulean:{sha256(pubkey)[0..20]}` — prefix hidden in UI
-- **Wallet**: from WASM, Chrome extension (`window.cerulean`), or vault import. Keypair only; names assigned in padron.
-- **Vote security**: Ed25519 signature, blind voter ID, per-scope channel isolation
+Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
+
+- **Extension**: `window.cerulean.connect()` → `{ address, publicKey }`. Signing: `window.cerulean.signVote(proposalId, option)` → `{ signature, public_key }`
+- **Vault import**: pull wallet from on-chain vault by DID. Signing: local WASM with ephemeral passphrase prompt
+- **No wallet**: redirect to `wallet.ceruleanledger.com`
+
+### Permissions
+
+- `isVerifiedFounder()` cross-checks localStorage `founder_did` against authenticated wallet DID
+- Admin role propagates down scope tree; voter/observer do not
+- `saveOrgSettings()` validates that `founder_did` matches the authenticated user
+- `X-Msp-Role` header carries the real role for server-side enforcement in strict mode
+
+### API Conventions
+
+- Backend requires client-generated `id` and `created_at` on POST
+- PUT requires full object body — `apiUpdate*` functions fetch current state, merge patch, then PUT
+- Assembly field mapping: frontend `type` ↔ backend `assembly_type` (mapped in `api.ts`)
+- Response envelope: `{ status: "Success", data: T }` — unwrapped by `unwrap<T>()`
 
 ### API Modules
 
 | Module | Endpoints | Purpose |
 |--------|-----------|---------|
-| Store: Scopes | `POST/GET/GET/{id}/PUT/{id}/DELETE/{id} /store/scopes` | Organizational units CRUD |
-| Store: Assemblies | `POST/GET/GET/{id}/PUT/{id}/DELETE/{id} /store/assemblies` | Assembly CRUD (filter: `?scope_id=`) |
-| Store: Sessions | `POST/GET/GET/{id}/PUT/{id}/DELETE/{id} /store/sessions` | Session CRUD (filter: `?assembly_id=`) |
-| Store: Actas | `POST/GET/GET/{id}/PUT/{id}/DELETE/{id} /store/actas` | Permanent records CRUD |
-| Channels | `POST /channels` | Create DLT channels per scope |
-| Governance | `/governance/proposals`, `.../vote`, `.../tally` | Elections lifecycle |
-| Identity | `/store/identities` | DID registration |
-| Vault | `/vault/store`, `/vault/{did}` | Encrypted wallet backup on-chain |
-| Health | `/health` | Node availability check |
-
-Headers: `X-Org-Id` (from org channel_id), `X-Msp-Role` (from auth), `X-Channel-Id` (active scope channel or org default).
+| Scopes | `CRUD /store/scopes` | Organizational units |
+| Assemblies | `CRUD /store/assemblies` | Assemblies (filter: `?scope_id=`) |
+| Sessions | `CRUD /store/sessions` | Sessions (filter: `?assembly_id=`) |
+| Actas | `CRUD /store/actas` | Permanent records |
+| Channels | `POST /channels` | DLT channel creation |
+| Governance | `/governance/proposals`, `.../vote`, `.../tally` | Elections |
+| Identity | `/store/identities` | DID registration (public) |
+| Vault | `/vault/store`, `/vault/{did}` | Wallet backup (public) |
 
 ### Testing
 
-- Vitest + happy-dom, setup in `vite.config.ts`
+- Vitest + happy-dom, configured in `vite.config.ts`
 - `src/test-setup.ts` — localStorage polyfill for Node 22+
-- Store tests mock `./api` with `vi.mock()` — test cache behavior, not HTTP
-- Auth tests verify role derivation, connect/disconnect, listener notifications
+- Store tests mock `./api` with `vi.mock()` — test cache + validation, not HTTP
+- Auth tests verify role derivation, founder cross-check, connect/disconnect
+- 50 tests covering store CRUD, permissions, convocatoria validation, auth
+
+### Security
+
+- CSP meta tag in `index.html` restricts scripts, styles, connections
+- Wallet keys in sessionStorage (not localStorage) — cleared on disconnect
+- Passphrase never in React state — ephemeral prompt or extension popup
+- Blind voter ID salted with random 16-byte nonce
+- Channel ID in memory (auth module), not localStorage
+- Extension identity verified via address derivation check
 
 ## Conventions
 
-- All UI text is in Spanish
-- localStorage keys use `cv_` prefix (only for org settings + active scope)
-- Immutable update patterns in store (spread + map, never mutate)
-- ISO 8601 dates, correlative folio counters for assemblies and actas
-- WASM must be initialized before any crypto operation (`ensureWasm()` guard)
-- Auth state is memory-only — never persisted
+- UI text in Spanish
+- localStorage: only `cv_org_settings` and `cv_active_scope`
+- Immutable updates in store (spread + map)
+- ISO 8601 dates, correlative folio counters
+- WASM for signing only, not wallet generation
+- Auth state is memory-only
