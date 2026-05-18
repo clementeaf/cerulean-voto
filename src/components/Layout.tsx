@@ -40,21 +40,24 @@ function AuthGate() {
   // Generate QR session when QR tab is selected
   useEffect(() => {
     if (tab !== 'qr') return
-    const session = createQRSession()
-    setQrSession(session)
-    setQrPolling(true)
-
     const controller = new AbortController()
-    pollQRSession(session, controller.signal).then(async (result) => {
-      setQrPolling(false)
-      if (!result) return // timeout or cancelled
-      const valid = await verifyAddressDerivation(result.publicKey, result.address)
-      if (!valid) { setErr('Wallet no verificada — clave publica no corresponde a la direccion'); return }
-      const did = didFromAddress(result.address)
-      authConnect(did, result.address, result.publicKey, 'vault')
+
+    createQRSession().then((session) => {
+      if (controller.signal.aborted) return
+      setQrSession(session)
+      setQrPolling(true)
+
+      pollQRSession(session, controller.signal).then(async (result) => {
+        setQrPolling(false)
+        if (!result) return
+        const valid = await verifyAddressDerivation(result.publicKey, result.address)
+        if (!valid) { setErr('Wallet no verificada — clave publica no corresponde a la direccion'); return }
+        const did = didFromAddress(result.address)
+        authConnect(did, result.address, result.publicKey, 'vault')
+      })
     })
 
-    return () => { controller.abort(); setQrPolling(false) }
+    return () => { controller.abort(); setQrPolling(false); setQrSession(null) }
   }, [tab])
 
   async function handleConnect() {

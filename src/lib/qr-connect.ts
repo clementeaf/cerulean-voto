@@ -2,15 +2,16 @@
 // Protocol:
 //   1. Voto generates a session ID and shows QR
 //   2. QR encodes: wallet.ceruleanledger.com/connect?session=SESSION&node=NODE_URL
-//   3. Cerulean Wallet (mobile) scans, user approves, wallet writes identity to node:
-//      POST /store/identities { did: "did:cerulean:connect:{session}", public_key: USER_PUBKEY }
-//   4. Voto polls GET /store/identities/did:cerulean:connect:{session}
+//   3. Cerulean Wallet (mobile) scans, user approves, wallet writes public_key to node:
+//      PUT /private-data/voto-connect/{session} { value: PUBLIC_KEY_HEX }
+//   4. Voto polls GET /private-data/voto-connect/{session}
 //   5. On response: extract public_key, derive address, verify, authenticate
 
 import { CERULEAN_WALLET_URL } from './wallet'
 
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 120000 // 2 minutes
+const COLLECTION = 'voto-connect'
 
 function generateSessionId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12))
@@ -18,23 +19,34 @@ function generateSessionId(): string {
 }
 
 function getNodeUrl(): string {
-  // In dev, the proxy target. In production, the actual API URL.
   return window.location.origin
 }
 
 export interface QRSession {
   sessionId: string
   connectUrl: string
-  sessionDid: string
+}
+
+/** Ensure the private data collection exists (idempotent) */
+async function ensureCollection(): Promise<void> {
+  try {
+    await fetch(`${getNodeUrl()}/api/v1/private-data/collections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: COLLECTION, member_org_ids: ['voto'] }),
+    })
+  } catch {
+    // Collection may already exist
+  }
 }
 
 /** Start a new QR connection session */
-export function createQRSession(): QRSession {
+export async function createQRSession(): Promise<QRSession> {
+  await ensureCollection()
   const sessionId = generateSessionId()
   const nodeUrl = getNodeUrl()
   const connectUrl = `${CERULEAN_WALLET_URL}/connect?session=${sessionId}&node=${encodeURIComponent(nodeUrl)}`
-  const sessionDid = `did:cerulean:connect:${sessionId}`
-  return { sessionId, connectUrl, sessionDid }
+  return { sessionId, connectUrl }
 }
 
 export interface QRConnectResult {
@@ -43,7 +55,7 @@ export interface QRConnectResult {
 }
 
 /** Poll the node for a wallet response to the QR session.
- *  Returns when the wallet has written its identity, or null on timeout. */
+ *  Returns when the wallet has written its public key, or null on timeout/cancel. */
 export async function pollQRSession(session: QRSession, signal?: AbortSignal): Promise<QRConnectResult | null> {
   const deadline = Date.now() + POLL_TIMEOUT_MS
 
@@ -51,24 +63,27 @@ export async function pollQRSession(session: QRSession, signal?: AbortSignal): P
     if (signal?.aborted) return null
 
     try {
-      const res = await fetch(`${getNodeUrl()}/api/v1/store/identities/${encodeURIComponent(session.sessionDid)}`)
+      const res = await fetch(
+        `${getNodeUrl()}/api/v1/private-data/${COLLECTION}/${encodeURIComponent(session.sessionId)}`,
+        { headers: { 'X-Org-Id': 'voto' } },
+      )
       if (res.ok) {
         const body = await res.json()
-        const data = body?.data
-        if (data?.public_key) {
+        const publicKey = body?.data?.value
+        if (publicKey && typeof publicKey === 'string' && publicKey.length >= 32) {
           // Derive address from public key
-          const pubBytes = new Uint8Array(data.public_key.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)))
+          const pubBytes = new Uint8Array(publicKey.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)))
           const hash = await crypto.subtle.digest('SHA-256', pubBytes)
           const address = Array.from(new Uint8Array(hash).slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('')
-          return { address, publicKey: data.public_key }
+          return { address, publicKey }
         }
       }
     } catch {
-      // Node not reachable or session not found yet — keep polling
+      // Not found yet or node unreachable — keep polling
     }
 
     await new Promise(resolve => setTimeout(resolve, POLL_INTERVAL_MS))
   }
 
-  return null // timeout
+  return null
 }
