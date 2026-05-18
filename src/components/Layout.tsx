@@ -4,6 +4,8 @@ import { routes } from '../lib/routes'
 import { getActiveScope, getScope, getOrgSettings } from '../lib/store'
 import { getAuth, isAuthenticated, authConnect, authDisconnect, authRefreshRole, onAuthChange } from '../lib/auth'
 import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress, verifyAddressDerivation } from '../lib/wallet'
+import { createQRSession, pollQRSession, type QRSession } from '../lib/qr-connect'
+import { QRCodeSVG } from 'qrcode.react'
 
 function useAuth() {
   const [, setTick] = useState(0)
@@ -13,22 +15,47 @@ function useAuth() {
 
 function AuthGate() {
   const wallets = getStoredWallets()
+  const [tab, setTab] = useState<'extension' | 'qr' | 'vault'>('qr')
   const [selectedAddress, setSelectedAddress] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
 
+  // QR session state
+  const [qrSession, setQrSession] = useState<QRSession | null>(null)
+  const [qrPolling, setQrPolling] = useState(false)
+
   // Check for Cerulean extension
   const [extensionAvailable, setExtensionAvailable] = useState(false)
   useEffect(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    if ((window as any).cerulean) setExtensionAvailable(true)
+    if ((window as any).cerulean) { setExtensionAvailable(true); setTab('extension') }
     else {
-      const h = () => setExtensionAvailable(true)
+      const h = () => { setExtensionAvailable(true); setTab('extension') }
       window.addEventListener('cerulean#initialized', h)
       return () => window.removeEventListener('cerulean#initialized', h)
     }
   }, [])
+
+  // Generate QR session when QR tab is selected
+  useEffect(() => {
+    if (tab !== 'qr') return
+    const session = createQRSession()
+    setQrSession(session)
+    setQrPolling(true)
+
+    const controller = new AbortController()
+    pollQRSession(session, controller.signal).then(async (result) => {
+      setQrPolling(false)
+      if (!result) return // timeout or cancelled
+      const valid = await verifyAddressDerivation(result.publicKey, result.address)
+      if (!valid) { setErr('Wallet no verificada — clave publica no corresponde a la direccion'); return }
+      const did = didFromAddress(result.address)
+      authConnect(did, result.address, result.publicKey, 'vault')
+    })
+
+    return () => { controller.abort(); setQrPolling(false) }
+  }, [tab])
 
   async function handleConnect() {
     setErr('')
@@ -44,7 +71,7 @@ function AuthGate() {
     } catch {
       setErr('Clave incorrecta — no se pudo descifrar la wallet')
     } finally {
-      setPassphrase('') // Zero passphrase immediately after use
+      setPassphrase('')
       setLoading(false)
     }
   }
@@ -57,7 +84,6 @@ function AuthGate() {
       const cerulean = (window as any).cerulean
       if (!cerulean) { setErr('Extension no detectada'); return }
       const { address, publicKey } = await cerulean.connect()
-      // Verify the extension isn't lying about the identity
       const valid = await verifyAddressDerivation(publicKey, address)
       if (!valid) { setErr('Extension no verificada — la clave publica no corresponde a la direccion'); return }
       const did = didFromAddress(address)
@@ -68,6 +94,8 @@ function AuthGate() {
       setLoading(false)
     }
   }
+
+  const tabClass = (t: string) => `flex-1 py-2 text-xs font-semibold transition-colors ${tab === t ? 'bg-main-500 text-white' : 'bg-neutral-50 text-neutral-500 hover:bg-neutral-100'}`
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-neutral-50 p-4">
@@ -82,46 +110,80 @@ function AuthGate() {
           <p className="text-sm text-neutral-500 mt-1">Conecta tu wallet para continuar</p>
         </div>
 
-        {extensionAvailable && (
+        {/* Tabs */}
+        <div className="flex border border-neutral-200 rounded-lg overflow-hidden">
+          {extensionAvailable && (
+            <button onClick={() => { setTab('extension'); setErr('') }} className={tabClass('extension')}>Extension</button>
+          )}
+          <button onClick={() => { setTab('qr'); setErr('') }} className={tabClass('qr')}>QR Celular</button>
+          <button onClick={() => { setTab('vault'); setErr('') }} className={tabClass('vault')}>Importar</button>
+        </div>
+
+        {/* Extension tab */}
+        {tab === 'extension' && (
           <button onClick={handleExtension} disabled={loading}
             className="w-full bg-green-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-green-700 disabled:bg-neutral-300 transition-colors">
             {loading ? 'Conectando...' : 'Conectar con Extension'}
           </button>
         )}
 
-        {wallets.length > 0 && (
-          <>
-            {extensionAvailable && <div className="flex items-center gap-2"><div className="flex-1 h-px bg-neutral-200" /><span className="text-xs text-neutral-400">o</span><div className="flex-1 h-px bg-neutral-200" /></div>}
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Wallet</label>
-              <select className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
-                value={selectedAddress} onChange={(e) => setSelectedAddress(e.target.value)}>
-                <option value="">Seleccionar...</option>
-                {wallets.map((w) => (
-                  <option key={w.walletFile.address} value={w.walletFile.address}>
-                    {w.name || w.walletFile.address.slice(0, 16) + '...'}
-                  </option>
-                ))}
-              </select>
+        {/* QR tab */}
+        {tab === 'qr' && qrSession && (
+          <div className="space-y-3">
+            <div className="flex justify-center">
+              <div className="bg-white border border-neutral-200 rounded-xl p-4">
+                <QRCodeSVG value={qrSession.connectUrl} size={180} level="M" bgColor="#ffffff" fgColor="#171717" />
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-neutral-600 mb-1">Clave</label>
-              <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
-                value={passphrase} onChange={(e) => setPassphrase(e.target.value)}
-                placeholder="Clave de tu wallet"
-                onKeyDown={(e) => e.key === 'Enter' && handleConnect()} />
+            <div className="text-center space-y-1">
+              {qrPolling ? (
+                <div className="flex items-center justify-center gap-2">
+                  <span className="w-2 h-2 rounded-full bg-main-500 animate-pulse" />
+                  <p className="text-xs text-main-600 font-medium">Esperando conexion desde celular...</p>
+                </div>
+              ) : (
+                <p className="text-xs text-neutral-400">Tiempo agotado. Cambia de tab y vuelve para generar nuevo QR.</p>
+              )}
+              <p className="text-[10px] text-neutral-400">Abre Cerulean Wallet en tu celular y escanea este codigo</p>
             </div>
-            <button onClick={handleConnect} disabled={loading || !selectedAddress || !passphrase}
-              className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 disabled:text-neutral-400 transition-colors">
-              {loading ? 'Verificando...' : 'Conectar'}
-            </button>
-          </>
+          </div>
         )}
 
-        {wallets.length === 0 && !extensionAvailable && (
-          <div className="bg-amber-50 rounded-lg p-3 text-center">
-            <p className="text-xs text-amber-700">No hay wallets registradas. Ve a <a href="/setup" className="underline font-semibold">/setup</a> para crear tu organizacion.</p>
-          </div>
+        {/* Vault import tab */}
+        {tab === 'vault' && (
+          <>
+            {wallets.length > 0 ? (
+              <>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Wallet</label>
+                  <select className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+                    value={selectedAddress} onChange={(e) => setSelectedAddress(e.target.value)}>
+                    <option value="">Seleccionar...</option>
+                    {wallets.map((w) => (
+                      <option key={w.walletFile.address} value={w.walletFile.address}>
+                        {w.name || w.walletFile.address.slice(0, 16) + '...'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-neutral-600 mb-1">Clave</label>
+                  <input type="password" className="w-full rounded-lg border border-neutral-200 px-3 py-2 text-sm"
+                    value={passphrase} onChange={(e) => setPassphrase(e.target.value)}
+                    placeholder="Clave de tu wallet"
+                    onKeyDown={(e) => e.key === 'Enter' && handleConnect()} />
+                </div>
+                <button onClick={handleConnect} disabled={loading || !selectedAddress || !passphrase}
+                  className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 disabled:bg-neutral-300 disabled:text-neutral-400 transition-colors">
+                  {loading ? 'Verificando...' : 'Conectar'}
+                </button>
+              </>
+            ) : (
+              <div className="bg-neutral-50 rounded-lg p-3 text-center">
+                <p className="text-xs text-neutral-500">No hay wallets importadas. Usa el QR para conectar desde el celular o ve a <a href="/setup" className="text-main-600 underline font-semibold">/setup</a> para configurar.</p>
+              </div>
+            )}
+          </>
         )}
 
         {err && <p className="text-xs text-red-700 bg-red-50 rounded-lg p-2">{err}</p>}
