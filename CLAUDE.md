@@ -9,8 +9,9 @@ npm run dev          # Dev server on http://localhost:5174 (proxies /api → nod
 npm run build        # tsc -b && vite build
 npm run lint         # ESLint
 npm run preview      # Preview production build
-npm test             # Vitest (run once)
-npm run test:watch   # Vitest (watch mode)
+npm test             # Vitest unit tests (run once)
+npm run test:watch   # Vitest unit tests (watch mode)
+npm run test:e2e     # Playwright E2E tests (Chromium)
 ```
 
 Sandbox node runs on port 9600. Set via `.env`: `VITE_API_PROXY_TARGET=http://127.0.0.1:9600`
@@ -32,7 +33,7 @@ Production: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com`
 
 ### Auth Flow
 
-1. User connects wallet in Layout auth gate: extension (`window.cerulean`), vault import, or redirect to `wallet.ceruleanledger.com` to create
+1. User connects wallet in Layout auth gate: extension (`window.cerulean`), mobile redirect, QR scan, vault import, or redirect to `wallet.ceruleanledger.com` to create
 2. Extension connections verified: `sha256(publicKey)[0..20] === address`
 3. `auth.ts` stores DID, address, publicKey, role, and source (extension/vault) in memory
 4. Interceptor injects `X-Msp-Role` from auth, blocks unauthenticated requests to protected endpoints
@@ -43,7 +44,9 @@ Production: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com`
 
 Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
 
-- **Extension**: `window.cerulean.connect()` → `{ address, publicKey }`. Signing: `window.cerulean.signVote(proposalId, option)` → `{ signature, public_key }`
+- **Extension** (desktop): `window.cerulean.connect()` → `{ address, publicKey }`. Signing: `window.cerulean.signVote(proposalId, option)` → `{ signature, public_key }`
+- **QR scan** (desktop → mobile): Voto shows QR, Wallet PWA scans, writes public key to `private-data` relay on node, Voto polls and authenticates
+- **Mobile redirect** (mobile → mobile): Voto redirects to `wallet.ceruleanledger.com/connect?session=X&node=Y&callback=Z`. Wallet approves, writes public key to relay, redirects back. Voto reads relay on `?session=` callback and authenticates
 - **Vault import**: pull wallet from on-chain vault by DID. Signing: local WASM with ephemeral passphrase prompt
 - **No wallet**: redirect to `wallet.ceruleanledger.com`
 
@@ -76,11 +79,11 @@ Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
 
 ### Testing
 
-- Vitest + happy-dom, configured in `vite.config.ts`
+- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 60 tests covering store CRUD, permissions, convocatoria validation, auth, and QR/mobile connect helpers
+- **E2E**: Playwright + Chromium, configured in `playwright.config.ts`. 7 tests covering AuthGate tab rendering (desktop QR vs mobile redirect), wallet redirect URL, callback auto-auth, and expired session error
 - `src/test-setup.ts` — localStorage polyfill for Node 22+
 - Store tests mock `./api` with `vi.mock()` — test cache + validation, not HTTP
-- Auth tests verify role derivation, founder cross-check, connect/disconnect
-- 50 tests covering store CRUD, permissions, convocatoria validation, auth
+- E2E tests mock `/api/**` routes via `page.route()` — no real backend needed
 
 ### Security
 

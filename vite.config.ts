@@ -20,6 +20,7 @@ export default defineConfig(({ mode }) => {
       environment: 'happy-dom',
       globals: true,
       setupFiles: ['./src/test-setup.ts'],
+      exclude: ['e2e/**', 'node_modules/**'],
     },
     server: {
       port: Number.parseInt(env.VITE_DEV_SERVER_PORT ?? '5174', 10),

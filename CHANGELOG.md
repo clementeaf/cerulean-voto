@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.5.0] - 2026-05-20
+
+### Added
+
+- **Mobile-to-mobile wallet connection**: redirect-based flow for users on mobile where QR scanning is not possible. Voto redirects to Cerulean Wallet PWA with a session ID; Wallet approves and writes the public key to the node relay; Voto reads it on callback and authenticates.
+- **Mobile detection**: `isMobileBrowser()` in `qr-connect.ts`. AuthGate shows "Conectar" (redirect) on mobile, "QR Celular" on desktop.
+- **E2E test suite**: Playwright with Chromium — 7 tests covering desktop QR tab, mobile redirect tab, wallet URL structure, callback auto-authentication, and expired session handling.
+
+### Changed
+
+- AuthGate tabs are now context-aware: extension (if detected), QR (desktop), redirect (mobile), and vault import (always).
+
 ## [0.4.0] - 2026-05-17
 
 ### Added

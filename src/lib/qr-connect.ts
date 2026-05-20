@@ -12,6 +12,7 @@ import { CERULEAN_WALLET_URL } from './wallet'
 const POLL_INTERVAL_MS = 2000
 const POLL_TIMEOUT_MS = 120000 // 2 minutes
 const COLLECTION = 'voto-connect'
+const SESSION_STORAGE_KEY = 'cv_mobile_session'
 
 function generateSessionId(): string {
   const bytes = crypto.getRandomValues(new Uint8Array(12))
@@ -20,6 +21,11 @@ function generateSessionId(): string {
 
 function getNodeUrl(): string {
   return window.location.origin
+}
+
+/** Detect mobile browser (no extension available) */
+export function isMobileBrowser(): boolean {
+  return /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
 }
 
 export interface QRSession {
@@ -86,4 +92,59 @@ export async function pollQRSession(session: QRSession, signal?: AbortSignal): P
   }
 
   return null
+}
+
+// -- Mobile redirect flow ---------------------------------------------------
+
+/** Build redirect URL for mobile-to-mobile connection.
+ *  Saves sessionId to sessionStorage so we can recover it on callback. */
+export async function startMobileRedirect(): Promise<void> {
+  const session = await createQRSession()
+  sessionStorage.setItem(SESSION_STORAGE_KEY, session.sessionId)
+  const callback = encodeURIComponent(window.location.origin + window.location.pathname)
+  const nodeUrl = encodeURIComponent(getNodeUrl())
+  window.location.href =
+    `${CERULEAN_WALLET_URL}/connect?session=${session.sessionId}&node=${nodeUrl}&callback=${callback}`
+}
+
+/** Check if we're returning from a mobile wallet redirect.
+ *  Returns the session ID from either URL param or sessionStorage. */
+export function getPendingMobileSession(): string | null {
+  const params = new URLSearchParams(window.location.search)
+  const sessionFromUrl = params.get('session')
+  if (sessionFromUrl) return sessionFromUrl
+  return sessionStorage.getItem(SESSION_STORAGE_KEY)
+}
+
+/** Resolve a pending mobile session: fetch public key from relay and clean up.
+ *  Returns null if session not found or expired. */
+export async function resolveMobileSession(sessionId: string): Promise<QRConnectResult | null> {
+  try {
+    const res = await fetch(
+      `${getNodeUrl()}/api/v1/private-data/${COLLECTION}/${encodeURIComponent(sessionId)}`,
+      { headers: { 'X-Org-Id': 'voto' } },
+    )
+    if (!res.ok) return null
+
+    const body = await res.json()
+    const publicKey = body?.data?.value
+    if (!publicKey || typeof publicKey !== 'string' || publicKey.length < 32) return null
+
+    const pubBytes = new Uint8Array(publicKey.match(/.{2}/g)!.map((b: string) => parseInt(b, 16)))
+    const hash = await crypto.subtle.digest('SHA-256', pubBytes)
+    const address = Array.from(new Uint8Array(hash).slice(0, 20)).map(b => b.toString(16).padStart(2, '0')).join('')
+    return { address, publicKey }
+  } finally {
+    cleanupMobileSession()
+  }
+}
+
+/** Remove session artifacts from URL and sessionStorage */
+export function cleanupMobileSession(): void {
+  sessionStorage.removeItem(SESSION_STORAGE_KEY)
+  const url = new URL(window.location.href)
+  if (url.searchParams.has('session')) {
+    url.searchParams.delete('session')
+    window.history.replaceState({}, '', url.pathname + url.search)
+  }
 }

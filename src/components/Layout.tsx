@@ -4,7 +4,7 @@ import { routes } from '../lib/routes'
 import { getActiveScope, getScope, getOrgSettings } from '../lib/store'
 import { getAuth, isAuthenticated, authConnect, authDisconnect, authRefreshRole, onAuthChange } from '../lib/auth'
 import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress, verifyAddressDerivation } from '../lib/wallet'
-import { createQRSession, pollQRSession, type QRSession } from '../lib/qr-connect'
+import { createQRSession, pollQRSession, type QRSession, isMobileBrowser, getPendingMobileSession, resolveMobileSession, startMobileRedirect } from '../lib/qr-connect'
 import { QRCodeSVG } from 'qrcode.react'
 
 function useAuth() {
@@ -15,7 +15,8 @@ function useAuth() {
 
 function AuthGate() {
   const wallets = getStoredWallets()
-  const [tab, setTab] = useState<'extension' | 'qr' | 'vault'>('qr')
+  const mobile = isMobileBrowser()
+  const [tab, setTab] = useState<'extension' | 'qr' | 'mobile' | 'vault'>(mobile ? 'mobile' : 'qr')
   const [selectedAddress, setSelectedAddress] = useState('')
   const [passphrase, setPassphrase] = useState('')
   const [err, setErr] = useState('')
@@ -35,6 +36,23 @@ function AuthGate() {
       window.addEventListener('cerulean#initialized', h)
       return () => window.removeEventListener('cerulean#initialized', h)
     }
+  }, [])
+
+  // Handle mobile redirect callback (?session= in URL or sessionStorage)
+  useEffect(() => {
+    const pendingSession = getPendingMobileSession()
+    if (!pendingSession) return
+
+    setLoading(true)
+    setTab('mobile')
+    resolveMobileSession(pendingSession).then(async (result) => {
+      setLoading(false)
+      if (!result) { setErr('Sesion expirada o no encontrada. Intenta de nuevo.'); return }
+      const valid = await verifyAddressDerivation(result.publicKey, result.address)
+      if (!valid) { setErr('Wallet no verificada — clave publica no corresponde a la direccion'); return }
+      const did = didFromAddress(result.address)
+      authConnect(did, result.address, result.publicKey, 'vault')
+    })
   }, [])
 
   // Generate QR session when QR tab is selected
@@ -118,7 +136,11 @@ function AuthGate() {
           {extensionAvailable && (
             <button onClick={() => { setTab('extension'); setErr('') }} className={tabClass('extension')}>Extension</button>
           )}
-          <button onClick={() => { setTab('qr'); setErr('') }} className={tabClass('qr')}>QR Celular</button>
+          {mobile ? (
+            <button onClick={() => { setTab('mobile'); setErr('') }} className={tabClass('mobile')}>Conectar</button>
+          ) : (
+            <button onClick={() => { setTab('qr'); setErr('') }} className={tabClass('qr')}>QR Celular</button>
+          )}
           <button onClick={() => { setTab('vault'); setErr('') }} className={tabClass('vault')}>Importar</button>
         </div>
 
@@ -149,6 +171,30 @@ function AuthGate() {
               )}
               <p className="text-[10px] text-neutral-400">Abre Cerulean Wallet en tu celular y escanea este codigo</p>
             </div>
+          </div>
+        )}
+
+        {/* Mobile redirect tab */}
+        {tab === 'mobile' && (
+          <div className="space-y-3">
+            {loading ? (
+              <div className="flex items-center justify-center gap-2 py-4">
+                <span className="w-2 h-2 rounded-full bg-main-500 animate-pulse" />
+                <p className="text-xs text-main-600 font-medium">Verificando conexion...</p>
+              </div>
+            ) : (
+              <>
+                <div className="bg-neutral-50 rounded-lg p-3 text-center">
+                  <p className="text-xs text-neutral-600">
+                    Se abrira <span className="font-semibold">Cerulean Wallet</span> en este navegador para verificar tu identidad.
+                  </p>
+                </div>
+                <button onClick={() => startMobileRedirect()}
+                  className="w-full bg-main-500 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-main-600 transition-colors">
+                  Abrir Cerulean Wallet
+                </button>
+              </>
+            )}
           </div>
         )}
 
