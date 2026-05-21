@@ -111,6 +111,7 @@ export interface ScopeMember {
   did: string
   name: string
   role: 'admin' | 'voter' | 'observer'
+  status: 'active' | 'pending'
   added_at: number
 }
 
@@ -231,6 +232,30 @@ export async function addScopeMember(scopeId: string, member: ScopeMember): Prom
 }
 
 export async function removeScopeMember(scopeId: string, did: string): Promise<void> {
+  const scope = getScope(scopeId)
+  if (!scope) throw new Error('Scope no encontrado')
+  await updateScope(scopeId, { members: scope.members.filter((m) => m.did !== did) })
+}
+
+export function getPendingSolicitudes(did: string): Array<{ scope: Scope; member: ScopeMember }> {
+  const results: Array<{ scope: Scope; member: ScopeMember }> = []
+  for (const scope of _scopes) {
+    const member = scope.members.find((m) => m.did === did && m.status === 'pending')
+    if (member) results.push({ scope, member })
+  }
+  return results
+}
+
+export async function acceptSolicitud(scopeId: string, did: string): Promise<void> {
+  const scope = getScope(scopeId)
+  if (!scope) throw new Error('Scope no encontrado')
+  const members = scope.members.map((m) =>
+    m.did === did ? { ...m, status: 'active' as const } : m
+  )
+  await updateScope(scopeId, { members })
+}
+
+export async function declineSolicitud(scopeId: string, did: string): Promise<void> {
   const scope = getScope(scopeId)
   if (!scope) throw new Error('Scope no encontrado')
   await updateScope(scopeId, { members: scope.members.filter((m) => m.did !== did) })

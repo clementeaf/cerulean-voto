@@ -77,6 +77,7 @@ Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
 | Identity | `/store/identities` | DID registration (public) |
 | Vault | `/vault/store`, `/vault/{did}` | Wallet backup (public) |
 | Alias | `POST /alias/resolve` | Zero-knowledge alias → DID resolution |
+| Invitations | `POST /governance/invitations`, `GET ...?voter=X`, `POST .../respond` | Governance proposal invitations via alias |
 
 ### Alias System
 
@@ -89,9 +90,20 @@ Zero-knowledge alias resolution. Plaintext never leaves the client.
 - Validation: `[\p{L}\p{N}_-]{3,32}` (Unicode-safe, XSS-safe)
 - Full design: `ALIAS_DESIGN.md`
 
+### Solicitudes (Role Requests)
+
+Unified "search by alias → send request → accept/decline" pattern. Used for both scope role assignments and voter inscription.
+
+- `ScopeMember.status`: `'active' | 'pending'` — pending means awaiting acceptance
+- **Scopes page**: admin searches alias → resolves → adds member as `pending` with chosen role
+- **Layout banner**: logged-in user sees pending solicitudes across all scopes → accept/decline
+- On accept: status becomes `active`, role takes effect
+- On decline: member removed from scope
+- **Voters page**: simple alias → resolve → inscribe in padron (no request/accept, local only)
+
 ### Testing
 
-- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 85 tests covering store CRUD, permissions, convocatoria validation, auth, QR/mobile connect helpers, and alias resolution
+- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 94 tests covering store CRUD, permissions, convocatoria validation, auth, QR/mobile connect helpers, alias resolution, and invitation flows
 - **E2E**: Playwright + Chromium, configured in `playwright.config.ts`. 7 tests covering AuthGate tab rendering (desktop QR vs mobile redirect), wallet redirect URL, callback auto-auth, and expired session error
 - `src/test-setup.ts` — localStorage polyfill for Node 22+
 - Store tests mock `./api` with `vi.mock()` — test cache + validation, not HTTP

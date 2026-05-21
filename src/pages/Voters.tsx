@@ -61,7 +61,7 @@ export default function Voters() {
           private_key: { type: 'Encrypted', ciphertext: '', salt: '', nonce: '' },
         }
         storeWallet(raw, placeholderWallet)
-        setMsg(`"${raw}" resuelto → ${result.did.slice(0, 30)}... inscrito en el padron`)
+        setMsg(`@${raw} resuelto e inscrito en el padron`)
         setAliasInput('')
         reload()
       } else {
@@ -112,9 +112,9 @@ export default function Voters() {
 
   return (
     <div className="h-full flex flex-col min-h-0 gap-3">
-      {/* Invite by alias */}
+      {/* Inscribe by alias */}
       <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
-        <p className="text-xs font-semibold text-neutral-600 mb-2">Invitar por alias</p>
+        <p className="text-xs font-semibold text-neutral-600 mb-2">Inscribir por alias</p>
         <div className="flex items-end gap-2">
           <div className="flex-1 min-w-0">
             <label className="block text-[10px] text-neutral-400 mb-0.5">Alias del participante</label>

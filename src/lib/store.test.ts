@@ -178,22 +178,22 @@ describe('Scopes', () => {
 describe('Scope Members', () => {
   it('addScopeMember updates cache', async () => {
     const s = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'c', members: [] })
-    const member: ScopeMember = { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now() }
+    const member: ScopeMember = { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now(), status: 'active' }
     await addScopeMember(s.id, member)
     expect(getScope(s.id)?.members).toHaveLength(1)
   })
 
   it('addScopeMember rejects duplicate DID', async () => {
     const s = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'c', members: [] })
-    const member: ScopeMember = { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now() }
+    const member: ScopeMember = { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now(), status: 'active' }
     await addScopeMember(s.id, member)
     await expect(addScopeMember(s.id, member)).rejects.toThrow('ya esta en este scope')
   })
 
   it('removeScopeMember removes by DID', async () => {
     const s = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'c', members: [] })
-    await addScopeMember(s.id, { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now() })
-    await addScopeMember(s.id, { did: 'did:cerulean:def', name: 'Bob', role: 'admin', added_at: Date.now() })
+    await addScopeMember(s.id, { did: 'did:cerulean:abc', name: 'Alice', role: 'voter', added_at: Date.now(), status: 'active' })
+    await addScopeMember(s.id, { did: 'did:cerulean:def', name: 'Bob', role: 'admin', added_at: Date.now(), status: 'active' })
     await removeScopeMember(s.id, 'did:cerulean:abc')
     expect(getScope(s.id)?.members).toHaveLength(1)
     expect(getScope(s.id)?.members[0].name).toBe('Bob')
@@ -399,9 +399,9 @@ describe('Permissions', () => {
   async function setupTree() {
     const parent = await saveScope({ name: 'Depto A', label: 'Departamento', parent_id: null, channel_id: 'org/depto-a', members: [] })
     const child = await saveScope({ name: 'Equipo 1', label: 'Equipo', parent_id: parent.id, channel_id: 'org/depto-a/equipo-1', members: [] })
-    await addScopeMember(parent.id, { did: adminDid, name: 'Admin', role: 'admin', added_at: Date.now() })
-    await addScopeMember(child.id, { did: voterDid, name: 'Voter', role: 'voter', added_at: Date.now() })
-    await addScopeMember(child.id, { did: observerDid, name: 'Observer', role: 'observer', added_at: Date.now() })
+    await addScopeMember(parent.id, { did: adminDid, name: 'Admin', role: 'admin', added_at: Date.now(), status: 'active' })
+    await addScopeMember(child.id, { did: voterDid, name: 'Voter', role: 'voter', added_at: Date.now(), status: 'active' })
+    await addScopeMember(child.id, { did: observerDid, name: 'Observer', role: 'observer', added_at: Date.now(), status: 'active' })
     return { parent, child }
   }
 

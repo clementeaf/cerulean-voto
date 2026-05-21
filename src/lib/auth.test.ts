@@ -75,7 +75,7 @@ describe('Auth', () => {
     saveOrgSettings(orgSettings)
     const voterDid = 'did:cerulean:voter'
     const scope = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'c', members: [] })
-    await addScopeMember(scope.id, { did: voterDid, name: 'V', role: 'voter', added_at: Date.now() })
+    await addScopeMember(scope.id, { did: voterDid, name: 'V', role: 'voter', added_at: Date.now(), status: 'active' })
     localStorage.setItem('cv_active_scope', scope.id)
 
     authConnect(voterDid, 'voter-addr', 'voter-pub')
@@ -94,7 +94,7 @@ describe('Auth', () => {
     saveOrgSettings(orgSettings)
     const adminDid = 'did:cerulean:admin-user'
     const scope = await saveScope({ name: 'S', label: 'X', parent_id: null, channel_id: 'c', members: [] })
-    await addScopeMember(scope.id, { did: adminDid, name: 'A', role: 'admin', added_at: Date.now() })
+    await addScopeMember(scope.id, { did: adminDid, name: 'A', role: 'admin', added_at: Date.now(), status: 'active' })
 
     // Connect without active scope — gets observer
     authConnect(adminDid, 'admin-addr', 'admin-pub')

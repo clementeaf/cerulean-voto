@@ -17,16 +17,15 @@ import {
   type Scope,
   type ScopeMember,
 } from '../lib/store'
-import { getStoredWallets, didFromWallet } from '../lib/wallet'
 import { getAuth } from '../lib/auth'
 import { createChannel } from '../lib/api'
+import { resolveAlias, validateAlias, getCachedAlias } from '../lib/alias'
 
 export default function Scopes() {
   const [scopes, setScopes] = useState<Scope[]>([])
   const orgSettings = getOrgSettings()
 
   useEffect(() => { fetchScopes().then(setScopes) }, [])
-  const wallets = getStoredWallets()
   const [activeId, setActiveId] = useState<string | null>(getActiveScope)
   const [selected, setSelected] = useState<Scope | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -48,9 +47,10 @@ export default function Scopes() {
   const [err, setErr] = useState('')
   const [msg, setMsg] = useState('')
 
-  // Member form
-  const [addMemberDid, setAddMemberDid] = useState('')
+  // Member form (alias-based)
+  const [aliasInput, setAliasInput] = useState('')
   const [addMemberRole, setAddMemberRole] = useState<ScopeMember['role']>('voter')
+  const [memberLoading, setMemberLoading] = useState(false)
 
   async function reload() {
     const fresh = await fetchScopes()
@@ -102,16 +102,29 @@ export default function Scopes() {
   }
 
   async function handleAddMember() {
-    if (!selected || !addMemberDid) return
-    const wallet = wallets.find((w) => didFromWallet(w.walletFile) === addMemberDid || w.walletFile.address === addMemberDid)
-    const name = wallet?.name || addMemberDid.slice(0, 20)
-    const did = wallet ? didFromWallet(wallet.walletFile) : addMemberDid
+    if (!selected) return
+    setMsg(''); setErr('')
+    const raw = aliasInput.trim()
+    const validationErr = validateAlias(raw)
+    if (validationErr) { setErr(validationErr); return }
+    setMemberLoading(true)
     try {
-      await addScopeMember(selected.id, { did, name, role: addMemberRole, added_at: Date.now() })
-      setAddMemberDid('')
+      const result = await resolveAlias(raw)
+      if (!result) { setErr(`Alias "${raw}" no encontrado en la red`); return }
+      await addScopeMember(selected.id, {
+        did: result.did,
+        name: raw,
+        role: addMemberRole,
+        status: 'pending',
+        added_at: Date.now(),
+      })
+      setMsg(`Solicitud enviada a @${raw} como ${ROLE_LABELS[addMemberRole]}`)
+      setAliasInput('')
       await reload()
     } catch (e: unknown) {
       setErr((e as Error).message)
+    } finally {
+      setMemberLoading(false)
     }
   }
 
@@ -240,24 +253,17 @@ export default function Scopes() {
                 </div>
               )}
 
-              {/* Add member — admin only */}
+              {/* Add member by alias — admin only */}
               {canManageSelected && (
               <div>
-                <p className="text-xs font-semibold text-neutral-600 mb-1.5">Agregar miembro</p>
+                <p className="text-xs font-semibold text-neutral-600 mb-1.5">Agregar miembro por alias</p>
                 <div className="flex gap-1.5">
-                  <select
+                  <input
                     className="flex-1 rounded border border-neutral-200 px-2 py-1 text-xs"
-                    value={addMemberDid} onChange={(e) => setAddMemberDid(e.target.value)}
-                  >
-                    <option value="">Seleccionar votante</option>
-                    {wallets
-                      .filter((w) => !selected.members.some((m) => m.did === didFromWallet(w.walletFile)))
-                      .map((w) => (
-                        <option key={w.walletFile.address} value={didFromWallet(w.walletFile)}>
-                          {w.name}
-                        </option>
-                      ))}
-                  </select>
+                    value={aliasInput} onChange={(e) => setAliasInput(e.target.value)}
+                    placeholder="Alias del participante"
+                    onKeyDown={(e) => { if (e.key === 'Enter') handleAddMember() }}
+                  />
                   <select
                     className="w-24 rounded border border-neutral-200 px-1 py-1 text-xs"
                     value={addMemberRole} onChange={(e) => setAddMemberRole(e.target.value as ScopeMember['role'])}
@@ -266,11 +272,12 @@ export default function Scopes() {
                     <option value="admin">Admin</option>
                     <option value="observer">Observador</option>
                   </select>
-                  <button onClick={handleAddMember} disabled={!addMemberDid}
+                  <button onClick={handleAddMember} disabled={memberLoading}
                     className="bg-main-500 text-white px-2 py-1 rounded text-xs font-semibold hover:bg-main-600 disabled:bg-neutral-200 disabled:text-neutral-400 transition-colors">
-                    +
+                    {memberLoading ? '...' : 'Enviar'}
                   </button>
                 </div>
+                {msg && <p className="text-[10px] text-green-700 mt-1">{msg}</p>}
               </div>
               )}
 
@@ -281,19 +288,30 @@ export default function Scopes() {
                   <p className="text-[10px] text-neutral-400">Sin miembros asignados.</p>
                 ) : (
                   <div className="space-y-1">
-                    {selected.members.map((m) => (
-                      <div key={m.did} className="flex items-center gap-2 bg-neutral-50 rounded px-2 py-1.5">
-                        <span className="text-xs font-medium flex-1 min-w-0 truncate">{m.name}</span>
-                        <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${ROLE_COLORS[m.role]}`}>
-                          {ROLE_LABELS[m.role]}
-                        </span>
-                        {canManageSelected && (
-                          <button onClick={() => handleRemoveMember(m.did)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
-                            Quitar
-                          </button>
-                        )}
-                      </div>
-                    ))}
+                    {selected.members.map((m) => {
+                      const alias = getCachedAlias(m.did)
+                      const isPending = m.status === 'pending'
+                      return (
+                        <div key={m.did} className={`flex items-center gap-2 rounded px-2 py-1.5 ${isPending ? 'bg-amber-50' : 'bg-neutral-50'}`}>
+                          <span className="text-xs font-medium flex-1 min-w-0 truncate">
+                            {alias ? `@${alias}` : m.name}
+                          </span>
+                          <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium shrink-0 ${ROLE_COLORS[m.role]}`}>
+                            {ROLE_LABELS[m.role]}
+                          </span>
+                          {isPending && (
+                            <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-medium shrink-0">
+                              Pendiente
+                            </span>
+                          )}
+                          {canManageSelected && (
+                            <button onClick={() => handleRemoveMember(m.did)} className="text-[10px] text-neutral-400 hover:text-red-500 shrink-0">
+                              Quitar
+                            </button>
+                          )}
+                        </div>
+                      )
+                    })}
                   </div>
                 )}
               </div>

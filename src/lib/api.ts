@@ -353,6 +353,46 @@ export async function apiResolveAlias(commitment: string): Promise<AliasResoluti
   }
 }
 
+// -- Invitations (governance proposal invitations via alias) ----------------
+
+export interface Invitation {
+  invitation_id: string
+  from_did: string
+  to_commitment: string
+  proposal_ids: number[]
+  signature: string
+  created_at: number
+  responded: boolean
+  accepted: boolean
+}
+
+export async function apiCreateInvitation(body: {
+  from_did: string
+  public_key: string
+  to_commitment: string
+  proposal_ids: number[]
+  signature: string
+}): Promise<{ invitation_id: string; from_did: string; to_commitment: string; proposal_ids: number[] }> {
+  const { data } = await client.post('/governance/invitations', body)
+  return unwrap(data)
+}
+
+export async function apiListInvitations(voterCommitment: string): Promise<Invitation[]> {
+  const { data } = await client.get('/governance/invitations', { params: { voter: voterCommitment } })
+  const result = unwrap<{ invitations: Invitation[] }>(data)
+  return result.invitations
+}
+
+export async function apiRespondInvitation(body: {
+  invitation_id: string
+  public_key: string
+  accepted: boolean
+  signature: string
+}): Promise<{ invitation_id: string; accepted: boolean }> {
+  const { data } = await client.post('/governance/invitations/respond', body)
+  return unwrap(data)
+}
+
 // -- Health -----------------------------------------------------------------
 
 export async function getHealth(): Promise<{ status: string }> {

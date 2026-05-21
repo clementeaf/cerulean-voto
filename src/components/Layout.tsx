@@ -1,7 +1,7 @@
 import { useState, useEffect, type ReactElement } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import { routes } from '../lib/routes'
-import { getActiveScope, getScope, getOrgSettings } from '../lib/store'
+import { getActiveScope, getScope, getOrgSettings, fetchScopes, getPendingSolicitudes, acceptSolicitud, declineSolicitud } from '../lib/store'
 import { getAuth, isAuthenticated, authConnect, authDisconnect, authRefreshRole, onAuthChange } from '../lib/auth'
 import { getStoredWallets, didFromWallet, verifyPassphrase, didFromAddress, verifyAddressDerivation } from '../lib/wallet'
 import { createQRSession, pollQRSession, type QRSession, isMobileBrowser, getPendingMobileSession, resolveMobileSession, startMobileRedirect } from '../lib/qr-connect'
@@ -241,13 +241,52 @@ function AuthGate() {
   )
 }
 
+interface PendingItem { scopeId: string; scopeName: string; scopeLabel: string; role: string }
+
 export default function Layout(): ReactElement {
   const auth = useAuth()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [pending, setPending] = useState<PendingItem[]>([])
+  const [respondingScope, setRespondingScope] = useState<string | null>(null)
   const location = useLocation()
 
   // Refresh role when active scope changes
   useEffect(() => { if (auth) authRefreshRole() }, [location.pathname])
+
+  // Load pending solicitudes
+  useEffect(() => {
+    if (!auth) return
+    fetchScopes().then(() => {
+      const items = getPendingSolicitudes(auth.did).map((s) => ({
+        scopeId: s.scope.id,
+        scopeName: s.scope.name,
+        scopeLabel: s.scope.label,
+        role: s.member.role,
+      }))
+      setPending(items)
+    })
+  }, [auth?.did, location.pathname])
+
+  async function handleAccept(scopeId: string) {
+    if (!auth) return
+    setRespondingScope(scopeId)
+    try {
+      await acceptSolicitud(scopeId, auth.did)
+      setPending((prev) => prev.filter((p) => p.scopeId !== scopeId))
+      authRefreshRole()
+    } catch { /* empty */ }
+    finally { setRespondingScope(null) }
+  }
+
+  async function handleDecline(scopeId: string) {
+    if (!auth) return
+    setRespondingScope(scopeId)
+    try {
+      await declineSolicitud(scopeId, auth.did)
+      setPending((prev) => prev.filter((p) => p.scopeId !== scopeId))
+    } catch { /* empty */ }
+    finally { setRespondingScope(null) }
+  }
 
   if (!isAuthenticated()) {
     return <AuthGate />
@@ -374,6 +413,38 @@ export default function Layout(): ReactElement {
 
         {/* Main content */}
         <main className="flex-1 min-w-0 min-h-0 overflow-y-auto px-4 sm:px-6 lg:px-8 py-6">
+          {/* Pending solicitudes banner */}
+          {pending.length > 0 && (
+            <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 mb-4">
+              <p className="text-xs font-semibold text-amber-800 mb-2">Solicitudes pendientes</p>
+              <div className="space-y-1.5">
+                {pending.map((p) => (
+                  <div key={p.scopeId} className="flex items-center justify-between bg-white rounded border border-amber-100 px-3 py-2">
+                    <p className="text-xs text-neutral-700">
+                      <span className="font-medium">{p.scopeLabel}: {p.scopeName}</span>
+                      <span className="text-neutral-400 ml-1.5">como {p.role === 'admin' ? 'Admin' : p.role === 'voter' ? 'Votante' : 'Observador'}</span>
+                    </p>
+                    <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                      <button
+                        onClick={() => handleAccept(p.scopeId)}
+                        disabled={respondingScope === p.scopeId}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded text-[10px] font-semibold transition-colors disabled:bg-neutral-300"
+                      >
+                        Aceptar
+                      </button>
+                      <button
+                        onClick={() => handleDecline(p.scopeId)}
+                        disabled={respondingScope === p.scopeId}
+                        className="bg-neutral-200 hover:bg-neutral-300 text-neutral-700 px-3 py-1 rounded text-[10px] font-semibold transition-colors disabled:bg-neutral-100"
+                      >
+                        Declinar
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <Outlet />
         </main>
       </div>

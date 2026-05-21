@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.7.0] - 2026-05-21
+
+### Added
+
+- **Solicitud flow (role requests)**: unified "search by alias → send request → accept/decline" pattern for scope role assignments.
+- `ScopeMember.status` field: `'active' | 'pending'` — pending members await acceptance before role takes effect.
+- **Scopes page**: alias search replaces dropdown for adding members. Admin resolves alias → member added as `pending` with chosen role.
+- **Layout banner**: logged-in users see pending solicitudes across all scopes with accept/decline buttons. On accept, role activates; on decline, member removed.
+- `getPendingSolicitudes()`, `acceptSolicitud()`, `declineSolicitud()` in store.
+- Invitation API wrappers in `api.ts` for future Ledger integration.
+
+### Changed
+
+- Scopes member addition uses alias resolution instead of wallet dropdown.
+- Voters page "Invitar por alias" simplified back to "Inscribir por alias" (resolve + inscribe, no proposal coupling).
+
 ## [0.6.0] - 2026-05-21
 
 ### Added
