@@ -272,7 +272,7 @@ export default function Setup() {
         deposit: 10000,
         action: { type: 'text', title: electionTitle.trim(), description: electionDesc.trim() || electionTitle.trim() },
       })
-      nav('/dashboard')
+      nav('/elections')
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error')
     } finally {
@@ -572,7 +572,7 @@ export default function Setup() {
                   {loading ? 'Creando...' : 'Crear y empezar'}
                 </button>
               </div>
-              <button onClick={() => nav('/dashboard')} className="w-full text-xs text-neutral-400 hover:text-neutral-600 text-center py-1">
+              <button onClick={() => nav('/elections')} className="w-full text-xs text-neutral-400 hover:text-neutral-600 text-center py-1">
                 Saltar — ir directo al panel
               </button>
             </div>

@@ -30,13 +30,13 @@ export default function Landing() {
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
             <button
-              onClick={() => nav(orgConfigured ? '/dashboard' : '/setup')}
+              onClick={() => nav(orgConfigured ? '/elections' : '/setup')}
               className="bg-main-500 text-white px-8 py-3 rounded-xl text-sm font-semibold hover:bg-main-600 transition-colors shadow-lg shadow-main-500/20"
             >
               {orgConfigured ? 'Ingresar al sistema' : 'Configurar mi organizacion'}
             </button>
             <button
-              onClick={() => nav('/results')}
+              onClick={() => nav('/elections')}
               className="bg-white text-neutral-700 px-8 py-3 rounded-xl text-sm font-semibold hover:bg-neutral-50 transition-colors border border-neutral-200"
             >
               Ver resultados publicos

@@ -10,10 +10,7 @@ export interface RouteEntry {
 
 export const routes: RouteEntry[] = [
   // Votacion
-  { path: '/dashboard', label: 'Panel', desc: 'Resumen de elecciones activas', group: 'Votacion', component: lazy(() => import('../pages/Dashboard')) },
-  { path: '/elections', label: 'Elecciones', desc: 'Crear y gestionar elecciones', group: 'Votacion', component: lazy(() => import('../pages/Elections')) },
-  { path: '/vote', label: 'Votar', desc: 'Emitir voto en eleccion activa', group: 'Votacion', component: lazy(() => import('../pages/Vote')) },
-  { path: '/results', label: 'Resultados', desc: 'Escrutinio y auditoria publica', group: 'Votacion', component: lazy(() => import('../pages/Results')) },
+  { path: '/elections', label: 'Elecciones', desc: 'Crear, votar y ver resultados', group: 'Votacion', component: lazy(() => import('../pages/Elections')) },
   { path: '/voters', label: 'Padron', desc: 'Registro de votantes habilitados', group: 'Votacion', component: lazy(() => import('../pages/Voters')) },
   // Organizacion
   { path: '/scopes', label: 'Estructura', desc: 'Unidades, miembros y permisos', group: 'Organizacion', component: lazy(() => import('../pages/Scopes')) },

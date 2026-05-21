@@ -264,7 +264,7 @@ export default function Layout(): ReactElement {
         role: s.member.role,
       }))
       setPending(items)
-    })
+    }).catch(() => { /* API not available or no scopes yet */ })
   }, [auth?.did, location.pathname])
 
   async function handleAccept(scopeId: string) {
@@ -298,8 +298,8 @@ export default function Layout(): ReactElement {
   const isFounder = !!org.founder_did && org.founder_did === auth!.did
 
   const currentPage = routes.find((r) =>
-    r.path === '/dashboard'
-      ? location.pathname === '/dashboard'
+    r.path === '/elections'
+      ? location.pathname === '/elections'
       : location.pathname.startsWith(r.path),
   )
 
@@ -374,7 +374,7 @@ export default function Layout(): ReactElement {
                     <NavLink
                       key={item.path}
                       to={item.path}
-                      end={item.path === '/dashboard'}
+                      end={item.path === '/elections'}
                       onClick={() => setSidebarOpen(false)}
                       className={({ isActive }) =>
                         `group flex flex-col px-3 py-2 rounded-xl mb-0.5 transition-all duration-150 ${
