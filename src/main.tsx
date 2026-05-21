@@ -1,6 +1,6 @@
 import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot } from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import './index.css'
 import Layout from './components/Layout'
 import { routes } from './lib/routes'
@@ -33,6 +33,11 @@ createRoot(document.getElementById('root')!).render(
               element={<Suspense fallback={Fallback}><Page /></Suspense>}
             />
           ))}
+          {/* Redirects from removed routes */}
+          <Route path="/dashboard" element={<Navigate to="/elections" replace />} />
+          <Route path="/vote" element={<Navigate to="/elections" replace />} />
+          <Route path="/results" element={<Navigate to="/elections" replace />} />
+          <Route path="*" element={<Navigate to="/elections" replace />} />
         </Route>
       </Routes>
     </BrowserRouter>
