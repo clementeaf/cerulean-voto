@@ -10,6 +10,7 @@ import {
   type StoredWallet,
   type WalletFile,
 } from '../lib/wallet'
+import { resolveAlias, validateAlias, getCachedAlias } from '../lib/alias'
 
 export default function Voters() {
   const [wallets, setWallets] = useState<StoredWallet[]>(getStoredWallets)
@@ -19,6 +20,7 @@ export default function Voters() {
   const [inscribeAddress, setInscribeAddress] = useState('')
   const [inscribeName, setInscribeName] = useState('')
   const [importDid, setImportDid] = useState('')
+  const [aliasInput, setAliasInput] = useState('')
   const [msg, setMsg] = useState('')
   const [err, setErr] = useState('')
   const [loading, setLoading] = useState(false)
@@ -40,6 +42,33 @@ export default function Voters() {
       }
     } catch (e: unknown) {
       setErr((e as Error)?.message || 'Error al importar')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAliasResolve() {
+    setMsg(''); setErr('')
+    const raw = aliasInput.trim()
+    const validationErr = validateAlias(raw)
+    if (validationErr) { setErr(validationErr); return }
+    setLoading(true)
+    try {
+      const result = await resolveAlias(raw)
+      if (result) {
+        const placeholderWallet: WalletFile = {
+          version: 1, algorithm: 'ed25519', address: result.address, public_key: '',
+          private_key: { type: 'Encrypted', ciphertext: '', salt: '', nonce: '' },
+        }
+        storeWallet(raw, placeholderWallet)
+        setMsg(`"${raw}" resuelto → ${result.did.slice(0, 30)}... inscrito en el padron`)
+        setAliasInput('')
+        reload()
+      } else {
+        setErr(`Alias "${raw}" no encontrado en la red`)
+      }
+    } catch (e: unknown) {
+      setErr((e as Error)?.message || 'Error al resolver alias')
     } finally {
       setLoading(false)
     }
@@ -83,6 +112,29 @@ export default function Voters() {
 
   return (
     <div className="h-full flex flex-col min-h-0 gap-3">
+      {/* Invite by alias */}
+      <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
+        <p className="text-xs font-semibold text-neutral-600 mb-2">Invitar por alias</p>
+        <div className="flex items-end gap-2">
+          <div className="flex-1 min-w-0">
+            <label className="block text-[10px] text-neutral-400 mb-0.5">Alias del participante</label>
+            <input
+              className="w-full rounded border border-neutral-200 px-2 py-1.5 text-sm"
+              value={aliasInput} onChange={(e) => setAliasInput(e.target.value)}
+              placeholder="pedro_gonzalez"
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAliasResolve() }}
+            />
+          </div>
+          <button onClick={handleAliasResolve} disabled={loading}
+            className={`${loading ? 'bg-neutral-300' : 'bg-main-500 hover:bg-main-600'} text-white px-4 py-1.5 rounded text-sm font-semibold transition-colors shrink-0`}>
+            {loading ? 'Buscando...' : 'Resolver e inscribir'}
+          </button>
+        </div>
+        <p className="text-[10px] text-neutral-400 mt-1.5">
+          Ingresa el alias del participante para resolver su identidad en la red e inscribirlo en el padron.
+        </p>
+      </div>
+
       {/* Inscribe by address */}
       <div className="bg-white rounded-lg border border-neutral-100 px-4 py-3 shrink-0">
         <p className="text-xs font-semibold text-neutral-600 mb-2">Inscribir participante por direccion</p>
@@ -159,6 +211,7 @@ export default function Voters() {
               {wallets.map((w) => {
                 const did = didFromWallet(w.walletFile)
                 const isExpanded = expanded === w.walletFile.address
+                const alias = getCachedAlias(did)
                 return (
                   <div key={w.walletFile.address} className="px-3 py-2.5">
                     {/* Row */}
@@ -167,7 +220,12 @@ export default function Voters() {
                         <button onClick={() => setExpanded(isExpanded ? null : w.walletFile.address)} className="text-sm font-medium text-neutral-800 hover:text-main-600 text-left">
                           {w.name}
                         </button>
-                        <p className="text-[10px] font-mono text-neutral-400 truncate">{did}</p>
+                        <div className="flex items-center gap-2">
+                          {alias && (
+                            <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-50 text-violet-700 font-medium">@{alias}</span>
+                          )}
+                          <p className="text-[10px] font-mono text-neutral-400 truncate">{did}</p>
+                        </div>
                       </div>
                       <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 font-medium shrink-0">
                         {w.walletFile.algorithm.toUpperCase()}

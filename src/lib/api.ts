@@ -336,6 +336,23 @@ export async function apiDeleteActa(id: string): Promise<void> {
   await client.delete(`/store/actas/${encodeURIComponent(id)}`);
 }
 
+// -- Alias resolution (Phase 3 — ALIAS_DESIGN.md) --------------------------
+
+export interface AliasResolution {
+  did: string
+  address: string
+}
+
+export async function apiResolveAlias(commitment: string): Promise<AliasResolution | null> {
+  try {
+    const { data } = await client.post('/alias/resolve', { commitment })
+    const result = unwrap<AliasResolution>(data)
+    return result
+  } catch {
+    return null
+  }
+}
+
 // -- Health -----------------------------------------------------------------
 
 export async function getHealth(): Promise<{ status: string }> {

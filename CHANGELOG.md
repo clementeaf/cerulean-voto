@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.6.0] - 2026-05-21
+
+### Added
+
+- **Alias resolution**: zero-knowledge alias lookup via SHA3-256 commitments. `src/lib/alias.ts` computes commitment client-side, resolves via `POST /api/v1/alias/resolve`.
+- **Invite by alias**: new section in Voters page to resolve an alias and auto-inscribe the participant.
+- **Alias display**: resolved aliases appear as `@alias` badge in the padron electoral.
+- 25 unit tests for alias validation, normalization, commitment, cache, and resolution.
+
+### Dependencies
+
+- Added `js-sha3` for SHA3-256 (FIPS 202).
+
 ## [0.5.0] - 2026-05-20
 
 ### Added

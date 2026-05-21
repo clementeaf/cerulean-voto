@@ -76,10 +76,22 @@ Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
 | Governance | `/governance/proposals`, `.../vote`, `.../tally` | Elections |
 | Identity | `/store/identities` | DID registration (public) |
 | Vault | `/vault/store`, `/vault/{did}` | Wallet backup (public) |
+| Alias | `POST /alias/resolve` | Zero-knowledge alias → DID resolution |
+
+### Alias System
+
+Zero-knowledge alias resolution. Plaintext never leaves the client.
+
+- `src/lib/alias.ts` — normalize, validate, compute commitment, resolve, cache
+- Commitment = `SHA3-256(salt + alias)` where salt = `SHA3-256("cerulean:alias:salt:" + alias)[0..16]`
+- API: `POST /api/v1/alias/resolve { commitment }` → `{ did, address }` or null
+- In-memory cache: resolved aliases display as `@alias` in voter lists
+- Validation: `[\p{L}\p{N}_-]{3,32}` (Unicode-safe, XSS-safe)
+- Full design: `ALIAS_DESIGN.md`
 
 ### Testing
 
-- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 60 tests covering store CRUD, permissions, convocatoria validation, auth, and QR/mobile connect helpers
+- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 85 tests covering store CRUD, permissions, convocatoria validation, auth, QR/mobile connect helpers, and alias resolution
 - **E2E**: Playwright + Chromium, configured in `playwright.config.ts`. 7 tests covering AuthGate tab rendering (desktop QR vs mobile redirect), wallet redirect URL, callback auto-auth, and expired session error
 - `src/test-setup.ts` — localStorage polyfill for Node 22+
 - Store tests mock `./api` with `vi.mock()` — test cache + validation, not HTTP
