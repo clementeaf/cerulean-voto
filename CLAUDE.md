@@ -14,13 +14,37 @@ npm run test:watch   # Vitest unit tests (watch mode)
 npm run test:e2e     # Playwright E2E tests (Chromium)
 ```
 
-Sandbox node runs on port 9600. Set via `.env`: `VITE_API_PROXY_TARGET=http://127.0.0.1:9600`
+## Deployment
 
-Production: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com`
+```bash
+npm run build
+aws s3 sync dist/ s3://ceruleanledger-voto --delete
+aws cloudfront create-invalidation --distribution-id E2QW638B59JZ89 --paths "/*"
+```
+
+- **Frontend**: S3 bucket `ceruleanledger-voto` + CloudFront `E2QW638B59JZ89`
+- **Domain**: `voto.ceruleanledger.com`
+- **API proxy**: CloudFront routes `/api/*` → `ceruleanledger.com` (same backend as Explorer)
+- **SPA routing**: CloudFront Function `voto-spa-rewrite` rewrites non-asset, non-API paths to `/index.html`
+- **Dev proxy**: Vite forwards `/api/*` to `VITE_API_PROXY_TARGET` (default `http://127.0.0.1:9600`)
 
 ## Architecture
 
 **On-chain voting platform** for the Cerulean Ledger ecosystem. Spanish-language UI for Chilean community organizations (Ley 19.418).
+
+### Pages (7 routes)
+
+| Group | Route | Page | Purpose |
+|-------|-------|------|---------|
+| Votacion | `/elections` | Elections | Create, vote, tally, results — all in one |
+| Votacion | `/voters` | Padron | Inscribe voters by alias or address |
+| Organizacion | `/scopes` | Estructura | Org units, members, roles via alias solicitud |
+| Organizacion | `/assemblies` | Asambleas | Ordinary/extraordinary assemblies |
+| Organizacion | `/sessions` | Sesiones | Session management, agenda, attendance |
+| Organizacion | `/actas` | Actas | Permanent records with integrity hash |
+| Admin | `/admin` | Administracion | Org settings, DLT channel, legal compliance |
+
+Standalone: `/` (Landing), `/setup` (wizard)
 
 ### Data Flow
 
@@ -33,36 +57,21 @@ Production: `VITE_API_PROXY_TARGET=https://api.ceruleanledger.com`
 
 ### Auth Flow
 
-1. User connects wallet in Layout auth gate: extension (`window.cerulean`), mobile redirect, QR scan, vault import, or redirect to `wallet.ceruleanledger.com` to create
+1. User connects wallet in Layout auth gate: extension (`window.cerulean`), mobile redirect, QR scan, vault import
 2. Extension connections verified: `sha256(publicKey)[0..20] === address`
-3. `auth.ts` stores DID, address, publicKey, role, and source (extension/vault) in memory
-4. Interceptor injects `X-Msp-Role` from auth, blocks unauthenticated requests to protected endpoints
-5. Public paths (no auth needed): `/health`, `/channels`, `/store/identities`, `/vault`
-6. Standalone routes (no auth gate): `/` (Landing), `/setup` (wizard — authenticates after step 1)
+3. `auth.ts` stores DID, address, publicKey, role, and source in memory
+4. Interceptor injects `X-Msp-Role`, `X-Channel-Id`, `X-Org-Id` headers
+5. Public paths (no auth): `/health`, `/channels`, `/store/identities`, `/vault`
 
-### Wallet Integration
+### Solicitudes (Role Requests)
 
-Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
+Unified "search by alias → send request → accept/decline" pattern for scope membership.
 
-- **Extension** (desktop): `window.cerulean.connect()` → `{ address, publicKey }`. Signing: `window.cerulean.signVote(proposalId, option)` → `{ signature, public_key }`
-- **QR scan** (desktop → mobile): Voto shows QR, Wallet PWA scans, writes public key to `private-data` relay on node, Voto polls and authenticates
-- **Mobile redirect** (mobile → mobile): Voto redirects to `wallet.ceruleanledger.com/connect?session=X&node=Y&callback=Z`. Wallet approves, writes public key to relay, redirects back. Voto reads relay on `?session=` callback and authenticates
-- **Vault import**: pull wallet from on-chain vault by DID. Signing: local WASM with ephemeral passphrase prompt
-- **No wallet**: redirect to `wallet.ceruleanledger.com`
-
-### Permissions
-
-- `isVerifiedFounder()` cross-checks localStorage `founder_did` against authenticated wallet DID
-- Admin role propagates down scope tree; voter/observer do not
-- `saveOrgSettings()` validates that `founder_did` matches the authenticated user
-- `X-Msp-Role` header carries the real role for server-side enforcement in strict mode
-
-### API Conventions
-
-- Backend requires client-generated `id` and `created_at` on POST
-- PUT requires full object body — `apiUpdate*` functions fetch current state, merge patch, then PUT
-- Assembly field mapping: frontend `type` ↔ backend `assembly_type` (mapped in `api.ts`)
-- Response envelope: `{ status: "Success", data: T }` — unwrapped by `unwrap<T>()`
+- `ScopeMember.status`: `'active' | 'pending'`
+- **Scopes page**: admin resolves alias → adds member as `pending` with chosen role
+- **Layout banner**: invitee sees pending solicitudes → accept/decline
+- On accept: status → `active`, role takes effect
+- On decline: member removed
 
 ### API Modules
 
@@ -77,7 +86,7 @@ Voto does **not** generate wallets — that's Cerulean Wallet's responsibility.
 | Identity | `/store/identities` | DID registration (public) |
 | Vault | `/vault/store`, `/vault/{did}` | Wallet backup (public) |
 | Alias | `POST /alias/resolve` | Zero-knowledge alias → DID resolution |
-| Invitations | `POST /governance/invitations`, `GET ...?voter=X`, `POST .../respond` | Governance proposal invitations via alias |
+| Invitations | `POST /governance/invitations`, `GET ...?voter=X`, `POST .../respond` | Governance invitations via alias |
 
 ### Alias System
 
@@ -86,36 +95,21 @@ Zero-knowledge alias resolution. Plaintext never leaves the client.
 - `src/lib/alias.ts` — normalize, validate, compute commitment, resolve, cache
 - Commitment = `SHA3-256(salt + alias)` where salt = `SHA3-256("cerulean:alias:salt:" + alias)[0..16]`
 - API: `POST /api/v1/alias/resolve { commitment }` → `{ did, address }` or null
-- In-memory cache: resolved aliases display as `@alias` in voter lists
 - Validation: `[\p{L}\p{N}_-]{3,32}` (Unicode-safe, XSS-safe)
-- Full design: `ALIAS_DESIGN.md`
-
-### Solicitudes (Role Requests)
-
-Unified "search by alias → send request → accept/decline" pattern. Used for both scope role assignments and voter inscription.
-
-- `ScopeMember.status`: `'active' | 'pending'` — pending means awaiting acceptance
-- **Scopes page**: admin searches alias → resolves → adds member as `pending` with chosen role
-- **Layout banner**: logged-in user sees pending solicitudes across all scopes → accept/decline
-- On accept: status becomes `active`, role takes effect
-- On decline: member removed from scope
-- **Voters page**: simple alias → resolve → inscribe in padron (no request/accept, local only)
 
 ### Testing
 
-- **Unit**: Vitest + happy-dom, configured in `vite.config.ts`. 94 tests covering store CRUD, permissions, convocatoria validation, auth, QR/mobile connect helpers, alias resolution, and invitation flows
-- **E2E**: Playwright + Chromium, configured in `playwright.config.ts`. 7 tests covering AuthGate tab rendering (desktop QR vs mobile redirect), wallet redirect URL, callback auto-auth, and expired session error
-- `src/test-setup.ts` — localStorage polyfill for Node 22+
+- **Unit**: Vitest + happy-dom. 94 tests covering store, permissions, auth, alias, invitations
+- **E2E**: Playwright + Chromium. 7 tests covering AuthGate, wallet connect, callbacks
 - Store tests mock `./api` with `vi.mock()` — test cache + validation, not HTTP
-- E2E tests mock `/api/**` routes via `page.route()` — no real backend needed
+- E2E tests mock `/api/**` via `page.route()` — no real backend needed
 
 ### Security
 
-- CSP meta tag in `index.html` restricts scripts, styles, connections
-- Wallet keys in sessionStorage (not localStorage) — cleared on disconnect
+- CSP meta tag restricts scripts, styles, connections
+- Wallet keys in sessionStorage — cleared on disconnect
 - Passphrase never in React state — ephemeral prompt or extension popup
 - Blind voter ID salted with random 16-byte nonce
-- Channel ID in memory (auth module), not localStorage
 - Extension identity verified via address derivation check
 
 ## Conventions
